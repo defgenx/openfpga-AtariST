@@ -171,6 +171,16 @@ initial begin
 	$finish;
 end
 
+// fdc probe: register writes and presence
+reg fdc_sel_d = 0;
+always @(posedge clk_32) if ($test$plusargs("fdprobe")) begin
+	fdc_sel_d <= atarist.fdc1772.cpu_sel;
+	if (atarist.fdc1772.cpu_sel && !fdc_sel_d && !atarist.fdc1772.cpu_rw)
+		$display("  fdc write reg %0d = %02x  present=%b drive=%b (t=%0d ms)", atarist.fdc1772.cpu_addr, atarist.fdc1772.cpu_din,
+			atarist.fdc1772.fdn_present[0], atarist.fdc1772.floppy_drive, $time / 1000000000);
+end
+always @(posedge fd_mounted[0]) $display("  img_mounted[0] rises, size %0d (t=%0d ns)", fd_size, $time / 1000);
+
 // progress: CPU address every 50 ms
 always begin
 	run_ms(50);
