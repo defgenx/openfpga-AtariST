@@ -676,7 +676,7 @@ st_media media (
 /* ------------------------------------------------------------------------------ */
 
 wire [31:0] cont1_key_s, cont2_key_s, cont3_key_s, cont4_key_s;
-wire [31:0] cont3_joy_s, cont4_joy_s;
+wire [31:0] cont1_joy_s, cont3_joy_s, cont4_joy_s;
 wire [15:0] cont3_trig_s, cont4_trig_s;
 synch_3 #(.WIDTH(32)) s_c1k(cont1_key, cont1_key_s, clk_32);
 synch_3 #(.WIDTH(32)) s_c2k(cont2_key, cont2_key_s, clk_32);
@@ -685,6 +685,7 @@ synch_3 #(.WIDTH(32)) s_c4k(cont4_key, cont4_key_s, clk_32);
 synch_3 #(.WIDTH(32)) s_c3j(cont3_joy, cont3_joy_s, clk_32);
 synch_3 #(.WIDTH(32)) s_c4j(cont4_joy, cont4_joy_s, clk_32);
 synch_3 #(.WIDTH(16)) s_c3t(cont3_trig, cont3_trig_s, clk_32);
+synch_3 #(.WIDTH(32)) s_c1j(cont1_joy, cont1_joy_s, clk_32);
 synch_3 #(.WIDTH(16)) s_c4t(cont4_trig, cont4_trig_s, clk_32);
 
 // MiST joystick encoding: [0] right [1] left [2] down [3] up [4] fire [5] fire 2
@@ -692,14 +693,52 @@ function [15:0] pad2joy(input [31:0] k);
 	pad2joy = {10'd0, k[5], k[4], k[0], k[1], k[2], k[3]};
 endfunction
 
-// pad 1 drives the ST joystick port unless it is emulating the mouse;
+// Handheld controls follow the Pocket Amiga core: Select opens the on-screen
+// keyboard, Start toggles mouse mode (D-pad moves, A/L = left, B/R = right click).
+wire        osk_visible;
+wire  [2:0] osk_row;
+wire  [3:0] osk_col;
+wire  [2:0] osk_mods;
+wire  [7:0] osk_key;
+wire        osk_mouse_toggle;
+
+osk_ctrl osk_ctrl (
+	.clk          ( clk_32 ),
+	.reset        ( ~reset_n_s ),
+	.pad          ( cont1_key_s[15:0] ),
+	.visible      ( osk_visible ),
+	.cur_row      ( osk_row ),
+	.cur_col      ( osk_col ),
+	.mods         ( osk_mods ),
+	.key          ( osk_key ),
+	.mouse_toggle ( osk_mouse_toggle )
+);
+
+// mouse mode: the menu setting is the default, Start flips it
+reg mouse_mode_flip = 1'b0;
+reg padmouse_d = 1'b0;
+always @(posedge clk_32) begin
+	padmouse_d <= padmouse_32;
+	if (padmouse_32 != padmouse_d) mouse_mode_flip <= 1'b0;
+	else if (osk_mouse_toggle)      mouse_mode_flip <= ~mouse_mode_flip;
+end
+wire pad_mouse_mode = (padmouse_32 ^ mouse_mode_flip) & ~osk_visible;
+
+// pad 1 drives the ST joystick port unless it is the mouse or typing on the keyboard;
 // pad 2 drives the mouse port (port 0), which the IKBD shares with the mouse.
-wire [15:0] joy1 = padmouse_32 ? 16'd0 : pad2joy(cont1_key_s);
+wire [15:0] joy1 = (padmouse_32 ^ mouse_mode_flip) | osk_visible ? 16'd0 : pad2joy(cont1_key_s);
 wire [15:0] joy0 = pad2joy(cont2_key_s);
 
-// face buttons that type keys (HID usages): X = Space, Y = Return
-wire [7:0] pad_key0 = cont1_key_s[6] ? 8'h2C : 8'h00;
-wire [7:0] pad_key1 = cont1_key_s[7] ? 8'h28 : 8'h00;
+// keys typed by pad 1 (HID usages): X = Space, Y = Return, plus the on-screen keyboard
+wire [7:0] pad_space  = cont1_key_s[6] ? 8'h2C : 8'h00;
+wire [7:0] pad_return = cont1_key_s[7] ? 8'h28 : 8'h00;
+wire [39:0] pad_keys = {
+	osk_key,
+	osk_mods[0] ? 8'hE0 : 8'h00,
+	osk_mods[1] ? 8'hE1 : 8'h00,
+	osk_mods[2] ? 8'hE2 : 8'h00,
+	osk_visible ? 8'h00 : (cont1_key_s[6] ? pad_space : pad_return)
+};
 
 // Dock keyboard on player 3, Dock mouse on player 4 (type nibbles 4 and 5)
 wire        kbd_present   = cont3_key_s[31:28] == 4'h4;
@@ -725,7 +764,12 @@ always @(posedge clk_32) begin
 	end
 end
 
-// Pad mouse: D-pad moves, speeds up after ~0.5 s held
+// Pad mouse: D-pad moves, speeds up after ~0.5 s held. A Dock analog controller's
+// left stick (player 1, type 3) moves the mouse in any mode, as in the Amiga core.
+wire        stick_present = cont1_key_s[31:28] == 4'h3;
+wire signed [8:0] stick_x = {1'b0, cont1_joy_s[7:0]}  - 9'sd128;
+wire signed [8:0] stick_y = {1'b0, cont1_joy_s[15:8]} - 9'sd128;
+wire        stick_moved = stick_present && (stick_x > 9'sd24 || stick_x < -9'sd24 || stick_y > 9'sd24 || stick_y < -9'sd24);
 reg  [16:0] padm_tick;
 reg   [4:0] padm_hold;
 reg         pad_mouse_event;
@@ -735,10 +779,14 @@ always @(posedge clk_32) begin
 	pad_mouse_event <= 1'b0;
 	padm_tick <= padm_tick + 17'd1;
 	if (padm_tick == 0) begin   // ~245 Hz
-		if (padmouse_32 && pad_dir != 0) begin
+		if (pad_mouse_mode && pad_dir != 0) begin
 			if (padm_hold != 5'd31) padm_hold <= padm_hold + 5'd1;
 			pad_dx <= pad_dir[3] ? (padm_hold[4] ? 16'sd4 : 16'sd1) : pad_dir[2] ? (padm_hold[4] ? -16'sd4 : -16'sd1) : 16'sd0;
 			pad_dy <= pad_dir[1] ? (padm_hold[4] ? 16'sd4 : 16'sd1) : pad_dir[0] ? (padm_hold[4] ? -16'sd4 : -16'sd1) : 16'sd0;
+			pad_mouse_event <= 1'b1;
+		end else if (stick_moved && !osk_visible) begin
+			pad_dx <= {{11{stick_x[8]}}, stick_x[8:4]};   // stick / 16, sign-extended
+			pad_dy <= {{11{stick_y[8]}}, stick_y[8:4]};
 			pad_mouse_event <= 1'b1;
 		end else
 			padm_hold <= 5'd0;
@@ -747,7 +795,8 @@ end
 
 wire [2:0] mouse_buttons =
 	(mouse_present ? cont4_joy_s[18:16] : 3'b000) |
-	(padmouse_32 ? {1'b0, cont1_key_s[5], cont1_key_s[4]} : 3'b000);
+	(pad_mouse_mode ? {1'b0, cont1_key_s[5] | cont1_key_s[9], cont1_key_s[4] | cont1_key_s[8]} : 3'b000) |
+	(stick_present && !osk_visible ? {1'b0, cont1_key_s[9], cont1_key_s[8]} : 3'b000);
 
 wire ps2_kbd_clk, ps2_kbd_data, ps2_mouse_clk, ps2_mouse_data;
 
@@ -757,8 +806,7 @@ hid_ps2 hid (
 	.kbd_present   ( kbd_present ),
 	.kbd_codes     ( {cont3_joy_s, cont3_trig_s} ),
 	.kbd_mods      ( cont3_key_s[15:8] ),
-	.pad_key0      ( pad_key0 ),
-	.pad_key1      ( pad_key1 ),
+	.pad_keys      ( pad_keys ),
 	.mouse_event   ( dock_mouse_event | pad_mouse_event ),
 	.mouse_dx      ( dock_mouse_event ? dock_dx : pad_dx ),
 	.mouse_dy      ( dock_mouse_event ? dock_dy : pad_dy ),
@@ -907,13 +955,22 @@ atarist_sdram #(1'b1, 1'b1) atarist (
 );
 
 assign dram_cke = 1'b1;
-assign dram_clk = clk_96_sd;
+// dram_clk leaves through a DDIO register so its pin delay matches the data pins
+pin_ddio_clk dram_clk_ddio (
+	.datain_h ( 1'b1 ),
+	.datain_l ( 1'b0 ),
+	.outclock ( clk_96_sd ),
+	.dataout  ( dram_clk )
+);
 
 /* ------------------------------------------------------------------------------ */
 /* ------------------------------------ Video ----------------------------------- */
 /* ------------------------------------------------------------------------------ */
 
 assign video_rgb_clock    = clk_32;
+
+wire [23:0] st_video_rgb;
+wire        st_video_de, st_video_skip, st_video_hs, st_video_vs;
 assign video_rgb_clock_90 = clk_32_90;
 
 st_video st_video (
@@ -926,6 +983,24 @@ st_video st_video (
 	.vsync_n    ( st_vsync_n ),
 	.blank_n    ( st_blank_n ),
 	.monomode   ( st_monomode ),
+	.video_rgb  ( st_video_rgb ),
+	.video_de   ( st_video_de ),
+	.video_skip ( st_video_skip ),
+	.video_hs   ( st_video_hs ),
+	.video_vs   ( st_video_vs )
+);
+
+osk_overlay osk_overlay (
+	.clk        ( clk_32 ),
+	.visible    ( osk_visible ),
+	.cur_row    ( osk_row ),
+	.cur_col    ( osk_col ),
+	.mods       ( osk_mods ),
+	.in_rgb     ( st_video_rgb ),
+	.in_de      ( st_video_de ),
+	.in_skip    ( st_video_skip ),
+	.in_hs      ( st_video_hs ),
+	.in_vs      ( st_video_vs ),
 	.video_rgb  ( video_rgb ),
 	.video_de   ( video_de ),
 	.video_skip ( video_skip ),

@@ -16,9 +16,8 @@ module hid_ps2 (
 	input  wire        kbd_present,
 	input  wire [47:0] kbd_codes,
 	input  wire  [7:0] kbd_mods,
-	// keys injected by the pad mapping (HID usages, 0 = none)
-	input  wire  [7:0] pad_key0,
-	input  wire  [7:0] pad_key1,
+	// keys injected by the pad mapping and the on-screen keyboard (5 HID usages, 0 = none)
+	input  wire [39:0] pad_keys,
 
 	// relative mouse motion, already summed by the caller; pulses on new report
 	input  wire        mouse_event,
@@ -85,7 +84,7 @@ endfunction
 /* Keyboard: diff the current key set against the set already reported      */
 /* ------------------------------------------------------------------------ */
 
-localparam N = 16; // 6 dock keys + 8 modifiers + 2 pad keys
+localparam N = 19; // 6 dock keys + 8 modifiers + 5 pad/OSK keys
 
 wire [7:0] cur[N];
 genvar gi;
@@ -96,29 +95,30 @@ generate
 	for (gi = 0; gi < 8; gi = gi + 1) begin : g_mods
 		assign cur[6+gi] = (kbd_present && kbd_mods[gi]) ? (8'hE0 + 8'(gi)) : 8'h00;
 	end
+	for (gi = 0; gi < 5; gi = gi + 1) begin : g_pad
+		assign cur[14+gi] = pad_keys[gi*8 +: 8];
+	end
 endgenerate
-assign cur[14] = pad_key0;
-assign cur[15] = pad_key1;
 
 reg [7:0] sent[N];          // keys whose make code has been sent
 
 // first released key / first new key
 reg       rel_found, new_found;
-reg [3:0] rel_idx, new_idx;
+reg [4:0] rel_idx, new_idx;
 always @(*) begin
 	integer i, j;
 	reg hit;
-	rel_found = 1'b0; rel_idx = 4'd0;
-	new_found = 1'b0; new_idx = 4'd0;
+	rel_found = 1'b0; rel_idx = 5'd0;
+	new_found = 1'b0; new_idx = 5'd0;
 	for (i = N-1; i >= 0; i = i - 1) begin
 		hit = 1'b0;
 		for (j = 0; j < N; j = j + 1) if (cur[j] == sent[i]) hit = 1'b1;
-		if (sent[i] != 8'h00 && !hit) begin rel_found = 1'b1; rel_idx = i[3:0]; end
+		if (sent[i] != 8'h00 && !hit) begin rel_found = 1'b1; rel_idx = i[4:0]; end
 	end
 	for (i = N-1; i >= 0; i = i - 1) begin
 		hit = 1'b0;
 		for (j = 0; j < N; j = j + 1) if (sent[j] == cur[i]) hit = 1'b1;
-		if (cur[i] != 8'h00 && hid2ps2(cur[i]) != 9'h000 && !hit) begin new_found = 1'b1; new_idx = i[3:0]; end
+		if (cur[i] != 8'h00 && hid2ps2(cur[i]) != 9'h000 && !hit) begin new_found = 1'b1; new_idx = i[4:0]; end
 	end
 end
 

@@ -61,8 +61,21 @@ controller was written for the MiST's 32 MB MT48LC16M16 (9 column bits); on the 
 simply uses half the columns. The Pocket SDRAM has no chip-select pin; `sdram.v`'s idle command
 (`CMD_INHIBIT`) becomes a NOP once CS is dropped, so its command encoding works unchanged.
 
-`dram_clk` comes from a separate PLL output leading `clk_96` by ~2 ns (`pll_st.v`), mirroring the MiST's
-zero-phase board clock. This is the first thing to tune if SDRAM is unstable on hardware.
+### SDRAM clock
+
+`dram_clk` is a separate PLL output (`clk_96_sd`) that leads `clk_96` by 4.06 ns, driven out through a
+DDIO register (`pin_ddio_clk`) so the clock pin has the same I/O delay as the data and command pins.
+Without the DDIO register the clock left through the clock network about 5.8 ns later than the data,
+and no phase could satisfy read setup and hold at once.
+
+The phase comes from the read latency `sdram.v` expects (inherited from MiST): CL2 data must sit in
+`sd_din` on the `clk_96` edge after the one matching the SDRAM's read edge. With the datasheet-style
+delays in `core_constraints.sdc` (tAC 6.4 ns, tOH 3.2 ns, setup 1.5 ns, hold 0.8 ns) the workable lead
+is about 3.3–4.7 ns. Phase shifts must be multiples of 1/8 of the 770.04 MHz VCO period (162.33 ps);
+4.06 ns is 39 steps.
+
+This is the first thing to tune if SDRAM is unstable on hardware: change `phase_shift3` in `pll_st.v`
+by whole steps.
 
 ## Settings
 

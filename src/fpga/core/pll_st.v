@@ -12,7 +12,7 @@ module pll_st (
 	output wire clk_32,
 	output wire clk_32_90,  // APF video_rgb_clock_90
 	output wire clk_96,
-	output wire clk_96_sd,  // SDRAM pin clock, leads clk_96 by ~2 ns
+	output wire clk_96_sd,  // SDRAM pin clock, leads clk_96 by 4.06 ns (docs/architecture.md)
 	output wire clk_128,
 	output wire clk_2,
 	output wire locked
@@ -33,7 +33,7 @@ module pll_st (
 		.phase_shift2("0 ps"),
 		.duty_cycle2(50),
 		.output_clock_frequency3("96.254964 MHz"),
-		.phase_shift3("8441 ps"),   // 52 VCO steps (1/8 of the 770.04 MHz VCO period each)
+		.phase_shift3("6331 ps"),   // 39 VCO steps of 162.33 ps: leads clk_96 by 4.06 ns
 		.duty_cycle3(50),
 		.output_clock_frequency4("128.339952 MHz"),
 		.phase_shift4("0 ps"),

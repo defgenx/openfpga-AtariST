@@ -3,3 +3,6 @@ release/
 dist/Cores/*/atarist.rbf_r
 sim/*.vvp
 sim/obj_*
+sim/*.ppm
+sim/*.png
+src/fpga/paths_*.txt

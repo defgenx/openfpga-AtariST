@@ -5,10 +5,46 @@
       {
         "type": "default",
         "mappings": [
-          { "id": 0, "name": "Fire / Left Click",  "key": "pad_btn_a" },
-          { "id": 1, "name": "Fire 2 / Right Click", "key": "pad_btn_b" },
-          { "id": 2, "name": "Space",               "key": "pad_btn_x" },
-          { "id": 3, "name": "Return",              "key": "pad_btn_y" }
+          {
+            "id": 0,
+            "name": "Fire / Left Click",
+            "key": "pad_btn_a"
+          },
+          {
+            "id": 1,
+            "name": "Fire 2 / Right Click",
+            "key": "pad_btn_b"
+          },
+          {
+            "id": 2,
+            "name": "Space",
+            "key": "pad_btn_x"
+          },
+          {
+            "id": 3,
+            "name": "Return",
+            "key": "pad_btn_y"
+          },
+          {
+            "id": 4,
+            "name": "Left Click (mouse mode)",
+            "key": "pad_trig_l"
+          },
+          {
+            "id": 5,
+            "name": "Right Click (mouse mode)",
+            "key": "pad_trig_r"
+          },
+          {
+            "id": 6,
+            "name": "On-screen Keyboard",
+            "key": "pad_btn_select"
+          },
+          {
+            "id": 7,
+            "name": "Toggle Mouse Mode",
+            "key": "pad_btn_start"
+          }
         ]
       }
     ]

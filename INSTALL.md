@@ -74,16 +74,23 @@ Useful settings (*Core Settings*):
 
 ## Controls
 
-| Pocket button | Joystick mode       | Mouse mode   |
-|---------------|---------------------|--------------|
-| D-pad         | Joystick            | Move pointer |
-| A             | Fire                | Left click   |
-| B             | Fire 2              | Right click  |
-| X             | Space               | Space        |
-| Y             | Return              | Return       |
+No keyboard needed. The scheme follows the Pocket Amiga core:
 
-In the Dock, a USB keyboard and mouse work as the real ST keyboard and mouse. Page Up = Help,
-Page Down = Undo.
+| Pocket button | Joystick mode | Mouse mode   | On-screen keyboard |
+|---------------|---------------|--------------|--------------------|
+| D-pad         | Joystick      | Move pointer | Move cursor        |
+| A             | Fire          | Left click   | Press key          |
+| B             | Fire 2        | Right click  | Close keyboard     |
+| X / Y         | Space / Return| Space / Return | -                |
+| L / R         | -             | Left / right click | -            |
+| **Select**    | Show keyboard | Show keyboard | Close keyboard    |
+| **Start**     | Mouse mode    | Joystick mode | -                 |
+
+On the on-screen keyboard, Ctrl/Shift/Alt are sticky: press Shift, then the letter. For GEM, press
+Start to use the D-pad as the mouse; press Start again to play with the joystick.
+
+In the Dock, a USB keyboard and mouse work as the real ST keyboard and mouse (Page Up = Help,
+Page Down = Undo), and an analog controller's left stick moves the mouse.
 
 ## Troubleshooting
 

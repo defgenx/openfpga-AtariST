@@ -13,7 +13,7 @@ reg         reset = 1;
 reg         kbd_present = 1;
 reg  [47:0] kbd_codes = 0;
 reg   [7:0] kbd_mods = 0;
-reg   [7:0] pad_key0 = 0, pad_key1 = 0;
+reg  [39:0] pad_keys = 0;
 reg         mouse_event = 0;
 reg  signed [15:0] mouse_dx = 0, mouse_dy = 0;
 reg   [2:0] mouse_buttons = 0;
@@ -22,7 +22,7 @@ wire kclk, kdat, mclk, mdat;
 hid_ps2 dut (
 	.clk(clk_32), .reset(reset),
 	.kbd_present(kbd_present), .kbd_codes(kbd_codes), .kbd_mods(kbd_mods),
-	.pad_key0(pad_key0), .pad_key1(pad_key1),
+	.pad_keys(pad_keys),
 	.mouse_event(mouse_event), .mouse_dx(mouse_dx), .mouse_dy(mouse_dy), .mouse_buttons(mouse_buttons),
 	.kbd_clk(kclk), .kbd_data(kdat), .mouse_clk(mclk), .mouse_data(mdat)
 );
@@ -79,10 +79,17 @@ initial begin
 	expect_key(12, 1, 0, "up up");
 	expect_key(1, 5, 0, "lshift up");
 	// pad-injected space
-	pad_key0 = 8'h2C; settle;
+	pad_keys = 40'h2C; settle;
 	expect_key(9, 7, 1, "pad space");
-	pad_key0 = 0; settle;
+	pad_keys = 0; settle;
 	expect_key(9, 7, 0, "pad space up");
+	// on-screen keyboard: 'q' with latched shift, in the upper pad slots
+	pad_keys = {8'h14, 8'hE1, 24'd0}; settle; settle;
+	expect_key(4, 4, 1, "osk q");
+	expect_key(1, 5, 1, "osk shift");
+	pad_keys = 0; settle; settle;
+	expect_key(4, 4, 0, "osk q up");
+	expect_key(1, 5, 0, "osk shift up");
 	// keyboard unplugged while a key is down releases it
 	kbd_codes = {40'd0, 8'h1E}; settle;
 	expect_key(4, 2, 1, "1 down");

@@ -2,7 +2,7 @@
 CORE = ../src/fpga/core
 MISTERY = ../src/fpga/MiSTery
 
-all: media media256 hid video
+all: media media256 hid video osk
 
 media: st_media_tb.vvp
 	vvp -n st_media_tb.vvp
@@ -30,7 +30,14 @@ video: st_video_tb.vvp
 st_video_tb.vvp: st_video_tb.sv $(CORE)/st_video.sv
 	iverilog -g2012 -o $@ st_video_tb.sv $(CORE)/st_video.sv
 
-clean:
-	rm -rf *.vvp *.vcd obj_*
+osk: osk_tb.vvp
+	vvp -n osk_tb.vvp
+	python3 ppm2png.py osk_frame.ppm osk_frame.png
 
-.PHONY: all media media256 hid video clean
+osk_tb.vvp: osk_tb.sv $(CORE)/osk.sv $(CORE)/osk_layout.svh $(CORE)/st_video.sv
+	iverilog -g2012 -I$(CORE) -o $@ osk_tb.sv $(CORE)/osk.sv $(CORE)/st_video.sv
+
+clean:
+	rm -rf *.vvp *.vcd *.ppm *.png obj_*
+
+.PHONY: all media media256 hid video osk clean

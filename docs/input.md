@@ -2,15 +2,32 @@
 
 ## Pocket pads
 
-| Pad | Joystick mode (default)            | Mouse mode                  |
-|-----|------------------------------------|-----------------------------|
-| 1   | ST joystick port 1 (the game port) | D-pad moves the mouse       |
-| 2   | ST port 0 (shared with the mouse)  | same                        |
+The handheld scheme follows the [Pocket Amiga core](https://github.com/Mazamars312/Analogue-Amiga):
 
-Pad 1 buttons: A = fire (left click in mouse mode), B = fire 2 (right click in mouse mode),
-X = Space, Y = Return. In mouse mode the pointer speeds up after the D-pad is held ~0.5 s.
+| Button  | Joystick mode (default) | Mouse mode               | Keyboard shown          |
+|---------|-------------------------|--------------------------|-------------------------|
+| D-pad   | ST joystick (port 1)    | move the pointer         | move the key cursor     |
+| A       | fire                    | left click               | press the key           |
+| B       | fire 2                  | right click              | close the keyboard      |
+| X / Y   | Space / Return          | Space / Return           | -                       |
+| L / R   | -                       | left / right click       | -                       |
+| Select  | show the keyboard       | show the keyboard        | close the keyboard      |
+| Start   | switch to mouse mode    | switch to joystick mode  | -                       |
 
-The IKBD switches port 0 between mouse and joystick on activity, as on MiST.
+*Pad Mode* in the core settings picks which mode the core starts in; Start flips it. In mouse mode the
+pointer speeds up after the D-pad is held ~0.5 s. Pad 2 drives ST port 0, which the IKBD shares with the
+mouse (it switches on activity, as on MiST). A Dock analog controller's left stick also moves the mouse,
+with L / R as the buttons.
+
+### On-screen keyboard
+
+Select opens a 16×5 keyboard at the bottom of the screen (`osk.sv`). Ctrl, Shift and Alt are sticky:
+press them once, then the key; they release with it. Other keys are held for as long as A is held, so
+games that need a key held down work. While the keyboard is shown the joystick is disconnected.
+
+The layout is the table `LAYOUT` in `tools/gen_osk.py`, which generates `src/fpga/core/osk_layout.svh`
+and the font ROM `osk_font.hex` (font8x8 by Daniel Hepper, public domain). Re-run it after editing:
+`python3 tools/gen_osk.py tools/font8x8_basic.h`.
 
 ## Dock keyboard and mouse
 
@@ -37,4 +54,4 @@ mouse quadrature counts.
 
 ## Not supported
 
-An on-screen keyboard for handheld use; the STe's enhanced joypad ports beyond what pads 1/2 provide.
+Two simultaneous non-modifier keys from the on-screen keyboard; the STe's enhanced joypad ports beyond what pads 1/2 provide.
