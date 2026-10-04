@@ -107,7 +107,7 @@ module osk_overlay #(
 	input  wire  [3:0] cur_col,
 	input  wire  [2:0] mods,
 	input  wire        badge,        // show the pad-mode label
-	input  wire        badge_mouse,  // 1: "MOUSE", 0: "JOYSTICK"
+	input  wire  [1:0] badge_mode,   // 0 JOYSTICK, 1 MOUSE, 2 KEYS
 
 	input  wire [23:0] in_rgb,
 	input  wire        in_de,
@@ -169,13 +169,10 @@ wire        latched = (cell_usage == 8'hE0 && mods[0]) || ((cell_usage == 8'hE1 
 wire [9:0]  bx = px - 10'd8;
 wire [9:0]  by = py - 10'd4;
 wire        in_badge = badge && in_de && (bx < 10'd64) && (by < 10'd8);
-function automatic [6:0] badge_char(input mouse, input [2:0] pos);
-	case ({mouse, pos})
-		4'h0: badge_char = 7'd74; 4'h1: badge_char = 7'd79; 4'h2: badge_char = 7'd89; 4'h3: badge_char = 7'd83;  // JOYS
-		4'h4: badge_char = 7'd84; 4'h5: badge_char = 7'd73; 4'h6: badge_char = 7'd67; 4'h7: badge_char = 7'd75;  // TICK
-		4'h8: badge_char = 7'd32; 4'h9: badge_char = 7'd77; 4'hA: badge_char = 7'd79; 4'hB: badge_char = 7'd85;  //  MOU
-		4'hC: badge_char = 7'd83; 4'hD: badge_char = 7'd69; default: badge_char = 7'd32;                          // SE
-	endcase
+function automatic [6:0] badge_char(input [1:0] mode, input [2:0] pos);
+	reg [63:0] s;
+	s = mode == 2'd1 ? " MOUSE  " : mode == 2'd2 ? "  KEYS  " : "JOYSTICK";
+	badge_char = s[(7 - pos) * 8 +: 7];
 endfunction
 
 // stage 1: glyph row lookup
@@ -186,7 +183,7 @@ reg [23:0]  rgb_s1;
 reg         de_s1, skip_s1, hs_s1, vs_s1;
 
 always @(posedge clk) begin
-	glyph      <= in_badge ? font[{badge_char(badge_mouse, bx[5:3]), by[2:0]}]
+	glyph      <= in_badge ? font[{badge_char(badge_mode, bx[5:3]), by[2:0]}]
 	                       : font[{osk_char(row, col, tx[4:3]), ty[2:0]}];
 	bit_s1     <= in_badge ? bx[2:0] : tx[2:0];
 	in_kb_s1   <= in_kb | in_badge;

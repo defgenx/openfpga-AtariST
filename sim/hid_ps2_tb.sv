@@ -13,7 +13,7 @@ reg         reset = 1;
 reg         kbd_present = 1;
 reg  [47:0] kbd_codes = 0;
 reg   [7:0] kbd_mods = 0;
-reg  [39:0] pad_keys = 0;
+reg  [79:0] pad_keys = 0;
 reg         mouse_event = 0;
 reg  signed [15:0] mouse_dx = 0, mouse_dy = 0;
 reg   [2:0] mouse_buttons = 0;
@@ -90,6 +90,15 @@ initial begin
 	pad_keys = 0; settle; settle;
 	expect_key(4, 4, 0, "osk q up");
 	expect_key(1, 5, 0, "osk shift up");
+	// Keys pad mode: up + left + Space + F1 at once, spread over the slots
+	pad_keys = {8'h52, 8'h00, 8'h50, 8'h00, 8'h2C, 8'h00, 8'h00, 8'h00, 8'h3A, 8'h00}; settle; settle; settle;
+	expect_key(12, 1, 1, "keys up");
+	expect_key(12, 3, 1, "keys left");
+	expect_key(9, 7, 1, "keys space");
+	expect_key(1, 0, 1, "keys F1");
+	pad_keys = 0; settle; settle; settle; settle; settle;   // 4 releases, up to 3 bytes each
+	expect_key(12, 1, 0, "keys up released");
+	expect_key(1, 0, 0, "keys F1 released");
 	// keyboard unplugged while a key is down releases it
 	kbd_codes = {40'd0, 8'h1E}; settle;
 	expect_key(4, 2, 1, "1 down");

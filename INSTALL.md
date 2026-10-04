@@ -86,7 +86,7 @@ Useful settings (*Core Settings*):
 | Machine       | ST / STE / Mega STE (resets the ST)                       |
 | Memory        | 512 KB to 14 MB; 1 MB is the default (resets the ST)      |
 | Monitor       | Colour, or Mono for 640×400 high-res software             |
-| Pad Mode      | Mouse (default, for the GEM desktop) or Joystick (games)  |
+| Pad Mode      | Mouse (default, for the desktop), Joystick or Keys        |
 | Borders       | Show or hide the screen borders                           |
 | Reset ST (warm) | Like the reset button on a real ST                      |
 | Cold Restart  | Clears memory, reloads TOS and restarts from scratch      |
@@ -97,25 +97,20 @@ memory and hardware.
 
 ## Controls
 
-No keyboard needed. The scheme follows the Pocket Amiga core:
+**Start** cycles the pad: **Mouse** (default, for the desktop) → **Joystick** (games) → **Keys**
+(keyboard games) → Mouse. A label shows the new mode for two seconds.
 
-| Pocket button | Joystick mode | Mouse mode   | On-screen keyboard |
-|---------------|---------------|--------------|--------------------|
-| D-pad         | Joystick (game port) | Move pointer | Move cursor |
-| A             | Fire          | Left click   | Press key          |
-| B             | Fire 2        | Right click  | Close keyboard     |
-| X / Y         | Space / Return| Space / Return | -                |
-| L / R         | -             | Left / right click | -            |
-| **Select**    | Show keyboard | Show keyboard | Close keyboard    |
-| **Start**     | Mouse mode    | Joystick mode | -                 |
+| Button | Mouse | Joystick | Keys | On-screen keyboard |
+|---|---|---|---|---|
+| D-pad | move pointer | joystick | arrow keys | move cursor |
+| A | left click | fire | Space | press key |
+| B | right click | fire 2 | Return | close |
+| X / Y | Space / Return | Space / Return | Esc / Help | – |
+| L / R | left / right click | – | F1 / F2 | – |
+| **Select** | keyboard | keyboard | keyboard | close |
 
-The pad starts in **mouse mode** for the GEM desktop. Press **Start** to switch to the joystick for a game
-(and back); a MOUSE / JOYSTICK label shows the new mode for two seconds. In joystick mode the desktop
-does not react to the D-pad: that is the ST's game port, which only games read. On the on-screen
-keyboard, Ctrl/Shift/Alt are sticky: press Shift, then the letter.
-
-In the Dock, a USB keyboard and mouse work as the real ST keyboard and mouse (Page Up = Help,
-Page Down = Undo), and an analog controller's left stick moves the mouse.
+On the on-screen keyboard, Ctrl/Shift/Alt are sticky: press Shift, then the letter. In the Dock, a USB
+keyboard and mouse work as on a real ST, and an analog stick moves the mouse.
 
 ## Troubleshooting
 

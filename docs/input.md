@@ -4,22 +4,21 @@
 
 The handheld scheme follows the [Pocket Amiga core](https://github.com/Mazamars312/Analogue-Amiga):
 
-| Button  | Joystick mode           | Mouse mode (default)     | Keyboard shown          |
-|---------|-------------------------|--------------------------|-------------------------|
-| D-pad   | ST joystick (port 1)    | move the pointer         | move the key cursor     |
-| A       | fire                    | left click               | press the key           |
-| B       | fire 2                  | right click              | close the keyboard      |
-| X / Y   | Space / Return          | Space / Return           | -                       |
-| L / R   | -                       | left / right click       | -                       |
-| Select  | show the keyboard       | show the keyboard        | close the keyboard      |
-| Start   | switch to mouse mode    | switch to joystick mode  | -                       |
+| Button  | Mouse (default)   | Joystick              | Keys       | Keyboard shown      |
+|---------|-------------------|-----------------------|------------|---------------------|
+| D-pad   | move the pointer  | ST joystick (port 1)  | arrow keys | move the key cursor |
+| A       | left click        | fire                  | Space      | press the key       |
+| B       | right click       | fire 2                | Return     | close the keyboard  |
+| X / Y   | Space / Return    | Space / Return        | Esc / Help | -                   |
+| L / R   | left / right click| -                     | F1 / F2    | -                   |
+| Select  | show the keyboard | show the keyboard     | show the keyboard | close        |
+| Start   | -> joystick       | -> keys               | -> mouse   | -                   |
 
-*Pad Mode* in the core settings picks which mode the core starts in (mouse by default); Start flips it
-and a MOUSE / JOYSTICK label shows the new mode for ~2 s. In joystick mode pad 1 is the ST's game port
-(port 1), which the GEM desktop ignores; only games read it. In mouse mode the
-pointer speeds up after the D-pad is held ~0.5 s. Pad 2 drives ST port 0, which the IKBD shares with the
-mouse (it switches on activity, as on MiST). A Dock analog controller's left stick also moves the mouse,
-with L / R as the buttons.
+*Pad Mode* in the core settings picks the starting mode (mouse by default); Start cycles
+mouse -> joystick -> keys, and a label shows the new mode for ~2 s. Keys mode sends real key presses
+through the IKBD (up to all ten buttons at once), for games played on the keyboard. Pad 2 drives ST
+port 0, which the IKBD shares with the mouse. A Dock analog controller's left stick also moves the
+mouse, with L / R as the buttons.
 
 ### On-screen keyboard
 

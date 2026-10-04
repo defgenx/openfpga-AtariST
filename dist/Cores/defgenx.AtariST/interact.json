@@ -195,6 +195,10 @@
           {
             "value": 0,
             "name": "Joystick"
+          },
+          {
+            "value": 2,
+            "name": "Keys"
           }
         ]
       },

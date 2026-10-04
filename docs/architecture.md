@@ -94,7 +94,7 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x80000014`  | YM stereo      | 0/1                                      |
 | `0x80000018`  | Write protect  | bit 0 drive A, bit 1 drive B             |
 | `0x8000001C`  | Borders        | 0 hide, 1 show                           |
-| `0x80000020`  | Pad mode       | 0 joystick, 1 mouse (default)            |
+| `0x80000020`  | Pad mode       | 0 joystick, 1 mouse (default), 2 keys    |
 | `0x80000030`  | Mouse speed    | 0 slow, 1 normal, 2 fast                 |
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |

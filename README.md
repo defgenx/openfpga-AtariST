@@ -15,7 +15,7 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
 * Colour (low/medium res, PAL and NTSC, borders on or off) and monochrome 640×400
 * YM2149 + STE DMA sound, Blitter
-* Playable handheld: on-screen keyboard (Select) and D-pad mouse (Start), after the Pocket Amiga core
+* Playable handheld: mouse, joystick and keys pad modes (Start), on-screen keyboard (Select)
 
   ![On-screen keyboard](docs/osk.png)
 
@@ -49,22 +49,24 @@ Installer options:
 
 ## Controls
 
-No keyboard needed. The pad **starts in mouse mode** for the GEM desktop; **Start** switches to the
-joystick for games and back (a MOUSE / JOYSTICK label confirms it).
+No keyboard needed. **Start** cycles the pad between three modes; a MOUSE / JOYSTICK / KEYS label
+confirms each switch. It starts in mouse mode for the GEM desktop.
 
-| Button     | Mouse mode (default) | Joystick mode            | On-screen keyboard  |
-|------------|----------------------|--------------------------|---------------------|
-| D-pad      | move the pointer     | joystick (ST game port)  | move the key cursor |
-| A          | left click           | fire                     | press the key       |
-| B          | right click          | fire 2                   | close the keyboard  |
-| X / Y      | Space / Return       | Space / Return           | –                   |
-| L / R      | left / right click   | –                        | –                   |
-| **Select** | show the keyboard    | show the keyboard        | close the keyboard  |
-| **Start**  | joystick mode        | mouse mode               | –                   |
+| Button     | Mouse (default)    | Joystick                | Keys          | On-screen keyboard  |
+|------------|--------------------|-------------------------|---------------|---------------------|
+| D-pad      | move the pointer   | joystick (ST game port) | arrow keys    | move the key cursor |
+| A          | left click         | fire                    | Space         | press the key       |
+| B          | right click        | fire 2                  | Return        | close the keyboard  |
+| X          | Space              | Space                   | Esc           | –                   |
+| Y          | Return             | Return                  | Help          | –                   |
+| L / R      | left / right click | –                       | F1 / F2       | –                   |
+| **Select** | show keyboard      | show keyboard           | show keyboard | close the keyboard  |
+| **Start**  | → joystick         | → keys                  | → mouse       | –                   |
 
-On the on-screen keyboard, Ctrl / Shift / Alt are sticky: press Shift, then the letter. In the Dock, a
-USB keyboard and mouse work as on a real ST (Page Up = Help, Page Down = Undo) and an analog stick moves
-the mouse. Details: [docs/input.md](docs/input.md).
+Use **Keys** mode for games played on the keyboard (arrow keys, Space, Return, F1/F2 menus), and the
+on-screen keyboard (Select) for typing; its Ctrl / Shift / Alt are sticky: press Shift, then the letter.
+In the Dock, a USB keyboard and mouse work as on a real ST (Page Up = Help, Page Down = Undo) and an
+analog stick moves the mouse. Details: [docs/input.md](docs/input.md).
 
 ## Core settings
 
@@ -81,7 +83,7 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 | YM Stereo          | Off / On                             | spreads the three sound channels left/right              |
 | Write Protect      | A and B / B only / A only / None     | floppies are protected by default — keep backups         |
 | Borders            | Show / Hide                          | hide to fill the screen with the 320×200 / 640×200 area  |
-| Pad Mode           | Mouse / Joystick                     | the mode the pad starts in; Start flips it               |
+| Pad Mode           | Mouse / Joystick / Keys              | the mode the pad starts in; Start cycles them            |
 | Mouse Speed        | Slow / Normal / Fast                 | speed of the D-pad mouse                                 |
 | Reset All Settings | –                                    | every setting back to its default, then a cold restart   |
 | TOS / Floppy A / B | file picker                          | a new TOS reloads and restarts; disks swap live          |
@@ -96,8 +98,8 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | **Bombs, a bus error or a black screen after changing a setting** | *Core Settings → Reset All Settings*. If the menu doesn't help, erase the saved settings: `./install.sh --reset-settings` (Windows: `install.bat -ResetSettings`), or delete `Settings/defgenx.AtariST/` on the card. |
 | **The ST hangs or acts strangely after a crash** | *Core Settings → Cold Restart*. *Reset ST (warm)* keeps memory, like a real ST's reset button. |
 | **Black screen at start** | `Assets/atarist/common/tos.img` is missing or not a raw 192/256 KB TOS (exactly 196,608 or 262,144 bytes). Re-run the installer, or copy `tos.img` from the release zip. |
-| **The D-pad does nothing on the desktop** | You are in joystick mode, which only games read. Press **Start** (the label shows MOUSE). |
-| **A game ignores the joystick** | Press **Start** until the label shows JOYSTICK. Most games use the joystick on port 1, which is pad 1. |
+| **The D-pad does nothing on the desktop** | You are in joystick or keys mode. Press **Start** until the label shows MOUSE. |
+| **A game ignores the joystick** | Press **Start** until the label shows JOYSTICK. If the game is played on the keyboard, use KEYS mode instead. |
 | **Crash with *Machine = STE* or *Mega STE*** | The TOS doesn't support that machine: 192 KB TOS (1.00–1.04, `emutos-192k-*.img`) is ST only. Use `tos.img` (256 KB EmuTOS) or TOS 1.06/1.62/2.06. |
 | **Memory setting has no effect, or the screen breaks after changing it** | Fixed in v0.1.4: update. The change must cold-restart the ST; a warm reset keeps the old memory layout. |
 | **A game or demo refuses to run** | It may need Atari's original TOS rather than EmuTOS (copy your dump as `tos.img`), or a specific machine (try *Machine = ST*, *Memory = 1 MB*). |

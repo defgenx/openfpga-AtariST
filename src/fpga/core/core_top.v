@@ -517,7 +517,7 @@ reg        cfg_blitter  = 1'b0;
 reg        cfg_stereo   = 1'b0;
 reg  [1:0] cfg_wp       = 2'b11; // write protect A/B
 reg        cfg_borders  = 1'b1;
-reg        cfg_padmouse = 1'b1;
+reg  [1:0] cfg_padmode  = 2'd1;  // 0 joystick, 1 mouse, 2 keys
 reg  [1:0] cfg_mouse_spd = 2'd1; // 0 slow, 1 normal, 2 fast (D-pad mouse)
 
 always @(posedge clk_74a) begin
@@ -531,12 +531,12 @@ always @(posedge clk_74a) begin
 		8'h14: cfg_stereo   <= bridge_wr_data[0];
 		8'h18: cfg_wp       <= bridge_wr_data[1:0];
 		8'h1C: cfg_borders  <= bridge_wr_data[0];
-		8'h20: cfg_padmouse <= bridge_wr_data[0];
+		8'h20: cfg_padmode  <= bridge_wr_data[1:0];
 		8'h30: cfg_mouse_spd <= bridge_wr_data[1:0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
 			cfg_model <= 2'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
-			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmouse <= 1'b1;
+			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmode <= 2'd1;
 			cfg_mouse_spd <= 2'd1; cfg_cold_t <= ~cfg_cold_t;
 		end
 		default: ;
@@ -550,28 +550,28 @@ always @(posedge clk_74a) begin
 	8'h14: cfg_bridge_rd_data <= cfg_stereo;
 	8'h18: cfg_bridge_rd_data <= cfg_wp;
 	8'h1C: cfg_bridge_rd_data <= cfg_borders;
-	8'h20: cfg_bridge_rd_data <= cfg_padmouse;
+	8'h20: cfg_bridge_rd_data <= cfg_padmode;
 	8'h30: cfg_bridge_rd_data <= cfg_mouse_spd;
 	default: cfg_bridge_rd_data <= 0;
 	endcase
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [16:0] cfg_s;
-synch_3 #(.WIDTH(17)) s_cfg(
-	{cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmouse},
+wire [17:0] cfg_s;
+synch_3 #(.WIDTH(18)) s_cfg(
+	{cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
 	cfg_s, clk_32);
-wire [1:0] mouse_spd_32 = cfg_s[16:15];
-wire       cold_t_32    = cfg_s[14];
-wire       reset_t_32   = cfg_s[13];
-wire [1:0] model_32     = cfg_s[12:11];
-wire [2:0] mem_32       = cfg_s[10:8];
-wire       mono_32      = cfg_s[7];
-wire       blitter_32   = cfg_s[6];
-wire       stereo_32    = cfg_s[5];
-wire [1:0] wp_32        = cfg_s[4:3];
-wire       borders_32   = cfg_s[2];
-wire       padmouse_32  = cfg_s[1];
+wire [1:0] mouse_spd_32 = cfg_s[17:16];
+wire       cold_t_32    = cfg_s[15];
+wire       reset_t_32   = cfg_s[14];
+wire [1:0] model_32     = cfg_s[13:12];
+wire [2:0] mem_32       = cfg_s[11:9];
+wire       mono_32      = cfg_s[8];
+wire       blitter_32   = cfg_s[7];
+wire       stereo_32    = cfg_s[6];
+wire [1:0] wp_32        = cfg_s[5:4];
+wire       borders_32   = cfg_s[3];
+wire [1:0] padmode_32   = cfg_s[2:1];
 
 /* ------------------------------------------------------------------------------ */
 /* ------------------------------------- Reset ---------------------------------- */
@@ -729,40 +729,42 @@ osk_ctrl osk_ctrl (
 	.mouse_toggle ( osk_mouse_toggle )
 );
 
-// mouse mode: the menu setting is the default, Start flips it
-reg mouse_mode_flip = 1'b0;
-reg padmouse_d = 1'b0;
+// Pad mode: the menu setting is the starting mode; Start cycles mouse -> joystick -> keys.
+localparam PM_JOY = 2'd0, PM_MOUSE = 2'd1, PM_KEYS = 2'd2;
+reg [1:0] pad_mode = PM_MOUSE;
+reg [1:0] padmode_d = PM_MOUSE;
 always @(posedge clk_32) begin
-	padmouse_d <= padmouse_32;
-	if (padmouse_32 != padmouse_d) mouse_mode_flip <= 1'b0;
-	else if (osk_mouse_toggle)      mouse_mode_flip <= ~mouse_mode_flip;
+	padmode_d <= padmode_32;
+	if (padmode_32 != padmode_d) pad_mode <= (padmode_32 == 2'd3) ? PM_MOUSE : padmode_32;
+	else if (osk_mouse_toggle)
+		pad_mode <= pad_mode == PM_MOUSE ? PM_JOY : pad_mode == PM_JOY ? PM_KEYS : PM_MOUSE;
 end
-wire pad_mouse_mode = (padmouse_32 ^ mouse_mode_flip) & ~osk_visible;
+wire pad_mouse_mode = pad_mode == PM_MOUSE && !osk_visible;
+wire pad_keys_mode  = pad_mode == PM_KEYS  && !osk_visible;
 
-// show MOUSE / JOYSTICK for ~2 s whenever the mode changes
+// show MOUSE / JOYSTICK / KEYS for ~2 s whenever the mode changes
 reg [25:0] badge_timer = 26'd0;
-reg        mode_d = 1'b1;
+reg  [1:0] mode_d = PM_MOUSE;
 always @(posedge clk_32) begin
-	mode_d <= padmouse_32 ^ mouse_mode_flip;
-	if ((padmouse_32 ^ mouse_mode_flip) != mode_d) badge_timer <= 26'd64_000_000;
+	mode_d <= pad_mode;
+	if (pad_mode != mode_d) badge_timer <= 26'd64_000_000;
 	else if (badge_timer != 0) badge_timer <= badge_timer - 26'd1;
 end
 
-// pad 1 drives the ST joystick port unless it is the mouse or typing on the keyboard;
+// pad 1 drives the ST joystick port only in joystick mode;
 // pad 2 drives the mouse port (port 0), which the IKBD shares with the mouse.
-wire [15:0] joy1 = (padmouse_32 ^ mouse_mode_flip) | osk_visible ? 16'd0 : pad2joy(cont1_key_s);
+wire [15:0] joy1 = (pad_mode == PM_JOY && !osk_visible) ? pad2joy(cont1_key_s) : 16'd0;
 wire [15:0] joy0 = pad2joy(cont2_key_s);
 
-// keys typed by pad 1 (HID usages): X = Space, Y = Return, plus the on-screen keyboard
-wire [7:0] pad_space  = cont1_key_s[6] ? 8'h2C : 8'h00;
-wire [7:0] pad_return = cont1_key_s[7] ? 8'h28 : 8'h00;
-wire [39:0] pad_keys = {
-	osk_key,
-	osk_mods[0] ? 8'hE0 : 8'h00,
-	osk_mods[1] ? 8'hE1 : 8'h00,
-	osk_mods[2] ? 8'hE2 : 8'h00,
-	osk_visible ? 8'h00 : (cont1_key_s[6] ? pad_space : pad_return)
-};
+// keys typed by pad 1 (HID usages). Keys mode: every button is a key; otherwise
+// X = Space and Y = Return. The on-screen keyboard uses the first four slots.
+function [7:0] k(input b, input [7:0] usage); k = b ? usage : 8'h00; endfunction
+wire [15:0] p = cont1_key_s[15:0];
+wire [79:0] pad_keys = osk_visible ? {osk_key, osk_mods[0] ? 8'hE0 : 8'h00, osk_mods[1] ? 8'hE1 : 8'h00, osk_mods[2] ? 8'hE2 : 8'h00, 48'd0} :
+                       pad_keys_mode ? {k(p[0], 8'h52), k(p[1], 8'h51), k(p[2], 8'h50), k(p[3], 8'h4F),   // arrows
+                                        k(p[4], 8'h2C), k(p[5], 8'h28), k(p[6], 8'h29), k(p[7], 8'h4B),   // Space Return Esc Help
+                                        k(p[8], 8'h3A), k(p[9], 8'h3B)} :                                 // F1 F2
+                       {k(p[6], 8'h2C), k(p[7], 8'h28), 64'd0};
 
 // Dock keyboard on player 3, Dock mouse on player 4 (type nibbles 4 and 5)
 wire        kbd_present   = cont3_key_s[31:28] == 4'h4;
@@ -1026,7 +1028,7 @@ osk_overlay osk_overlay (
 	.cur_col    ( osk_col ),
 	.mods       ( osk_mods ),
 	.badge      ( badge_timer != 0 ),
-	.badge_mouse( padmouse_32 ^ mouse_mode_flip ),
+	.badge_mode ( pad_mode ),
 	.in_rgb     ( st_video_rgb ),
 	.in_de      ( st_video_de ),
 	.in_skip    ( st_video_skip ),
