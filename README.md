@@ -13,6 +13,9 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 * Ready to run: [EmuTOS](https://emutos.sourceforge.io) (free TOS replacement) is bundled; any original
   192 KB or 256 KB TOS works too, and picking another TOS from the menu reloads it
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
+* Two **ACSI hard disks** (`.hd` / `.img` images, read and write): EmuTOS mounts them as C:, D: … directly
+* **MIDI IN/OUT on the link port** (31,250 baud): MIDI IN works with Analogue's *Pocket MIDI IN* cable
+* **4-player adapter** (parallel port, Gauntlet II style) using Dock controllers 3 and 4, and the STE joypad ports
 * Colour (low/medium res, PAL and NTSC, borders on or off) and monochrome 640×400
 * YM2149 + STE DMA sound, Blitter
 * Playable handheld: mouse, joystick and keys pad modes (Start), on-screen keyboard (Select)
@@ -86,7 +89,10 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 | Pad Mode           | Mouse / Joystick / Keys              | the mode the pad starts in; Start cycles them            |
 | Mouse Speed        | Slow / Normal / Fast                 | speed of the D-pad mouse                                 |
 | Reset All Settings | –                                    | every setting back to its default, then a cold restart   |
+| STE Joypad Ports   | –                                    | switches pads 1/2 between the ST joystick ports and the STE enhanced ports (same as F11 on MiST/MiSTer) |
 | TOS / Floppy A / B | file picker                          | a new TOS reloads and restarts; disks swap live          |
+| Link Port MIDI     | Off / On                             | the link port carries MIDI IN (pin 3, SI) and OUT (pin 2, SO); leave Off for other link devices |
+| Hard Disk 0 / 1    | file picker                          | ACSI images (`.hd`, `.img`); *Cold Restart* to boot from a new one |
 
 Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at the next start.
 
@@ -103,6 +109,7 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | **Crash with *Machine = STE* or *Mega STE*** | The TOS doesn't support that machine: 192 KB TOS (1.00–1.04, `emutos-192k-*.img`) is ST only. Use `tos.img` (256 KB EmuTOS) or TOS 1.06/1.62/2.06. |
 | **Memory setting has no effect, or the screen breaks after changing it** | Fixed in v0.1.4: update. The change must cold-restart the ST; a warm reset keeps the old memory layout. |
 | **A game or demo refuses to run** | It may need Atari's original TOS rather than EmuTOS (copy your dump as `tos.img`), or a specific machine (try *Machine = ST*, *Memory = 1 MB*). |
+| **Hard disk not seen** | EmuTOS reads FAT16 partitions (MBR or Atari partition table) by itself. With original Atari TOS, the disk needs a driver on it (AHDI, HDDriver, ICD). Choose *Cold Restart* after picking a new image. |
 | **A disk is not seen** | Only raw `.st` images work; convert `.msa` / `.stx` first (e.g. Hatari's `hmsa`). Load it in *Floppy A* and choose *Cold Restart* to boot from it. |
 | **A game cannot save** | Floppies are write-protected by default: set *Write Protect* to *None* (keep a backup of the disk). |
 | **Mono mode: picture off-centre or black** | Mono timing is not yet verified on hardware; switch *Monitor* back to *Colour*. |
@@ -147,7 +154,8 @@ make -C sim           # needs Icarus Verilog and Verilator
 * Mono and medium-res horizontal positions are estimated ([docs/video.md](docs/video.md)).
 * No Atari Falcon: it needs about twice the Pocket's FPGA.
 * The RTC is set once at boot and does not tick.
-* No hard disk (ACSI), MIDI, serial/parallel or `.msa`/`.stx` images.
+* No RS-232 serial or printer, Viking hi-res, `.msa`/`.stx` images.
+* MIDI is untested on hardware.
 
 ## Documentation
 

@@ -743,6 +743,7 @@ set_global_assignment -name VERILOG_FILE core/core_bridge_cmd.v
 set_global_assignment -name VERILOG_FILE core/pll_st.v
 set_global_assignment -name VERILOG_FILE core/pin_ddio_clk.v
 set_global_assignment -name SYSTEMVERILOG_FILE core/st_media.sv
+set_global_assignment -name SYSTEMVERILOG_FILE core/acsi_ctrl.sv
 set_global_assignment -name SYSTEMVERILOG_FILE core/hid_ps2.sv
 set_global_assignment -name SYSTEMVERILOG_FILE core/st_video.sv
 set_global_assignment -name SYSTEMVERILOG_FILE core/osk.sv

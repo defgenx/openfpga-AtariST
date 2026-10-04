@@ -75,6 +75,25 @@ Copy `.st` disk images to `Assets/atarist/common/`, then load them from the core
 * Disks are **write-protected by default**. To let games save, set *Core Settings → Write Protect* to
   *None*. Keep backups: disk writing is new and untested on hardware.
 
+## 3b. Hard disks (optional)
+
+Copy ACSI hard-disk images (`.hd`, `.img`, as used by Hatari and MiSTer) to `Assets/atarist/common/`
+and pick them in *Core Settings → Hard Disk 0 / 1*, then *Cold Restart*. EmuTOS mounts FAT16 partitions
+as C:, D: … with no driver; original Atari TOS needs a hard-disk driver installed on the image
+(AHDI, HDDriver or ICD). Writing is supported, so keep a backup of images you care about.
+
+## 3c. MIDI (optional)
+
+Set *Core Settings → Link Port MIDI* to *On*. The link port then carries the ST's MIDI port at 31,250
+baud, 3.3 V:
+
+* **MIDI IN** (keyboard, sequencer → ST): Analogue's *Nanoloop Pocket to MIDI IN* cable, plugged into a
+  device's MIDI OUT.
+* **MIDI OUT** (ST → synth): no official cable; the standard 3.3 V DIY wiring is link port pin 2 (SO)
+  through 10 Ω to DIN pin 5, and 3.3 V through 33 Ω to DIN pin 4, ground to DIN pin 2.
+
+Leave it *Off* when using the link port for anything else.
+
 ## 4. Start it
 
 On the Pocket: *openFPGA → Atari ST*. The GEM desktop (or your boot disk) appears after a second or two.

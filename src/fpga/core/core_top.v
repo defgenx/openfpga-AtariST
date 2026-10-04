@@ -251,8 +251,10 @@ assign cart_tran_pin31 = 1'bz;      // input
 assign cart_tran_pin31_dir = 1'b0;  // input
 
 // link port is unused, set to input only to be safe
-assign port_tran_so = 1'bz;
-assign port_tran_so_dir = 1'b0;
+// SO / SI carry MIDI OUT / IN (31250 baud, 3.3 V) when "Link Port MIDI" is on;
+// otherwise the port is left as inputs. SC and SD stay inputs.
+assign port_tran_so = link_midi_74 ? midi_tx_74 : 1'bz;
+assign port_tran_so_dir = link_midi_74;
 assign port_tran_si = 1'bz;
 assign port_tran_si_dir = 1'b0;
 assign port_tran_sck = 1'bz;
@@ -519,6 +521,8 @@ reg  [1:0] cfg_wp       = 2'b11; // write protect A/B
 reg        cfg_borders  = 1'b1;
 reg  [1:0] cfg_padmode  = 2'd1;  // 0 joystick, 1 mouse, 2 keys
 reg  [1:0] cfg_mouse_spd = 2'd1; // 0 slow, 1 normal, 2 fast (D-pad mouse)
+reg        cfg_stepad_t = 1'b0;  // toggles on "STE Joypad Ports"
+reg        cfg_linkmidi = 1'b0;  // MIDI on the link port
 
 always @(posedge clk_74a) begin
 	if (bridge_wr && bridge_addr[31:8] == 24'h800000) begin
@@ -533,6 +537,8 @@ always @(posedge clk_74a) begin
 		8'h1C: cfg_borders  <= bridge_wr_data[0];
 		8'h20: cfg_padmode  <= bridge_wr_data[1:0];
 		8'h30: cfg_mouse_spd <= bridge_wr_data[1:0];
+		8'h34: cfg_stepad_t  <= ~cfg_stepad_t;
+		8'h38: cfg_linkmidi  <= bridge_wr_data[0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
 			cfg_model <= 2'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
@@ -552,15 +558,18 @@ always @(posedge clk_74a) begin
 	8'h1C: cfg_bridge_rd_data <= cfg_borders;
 	8'h20: cfg_bridge_rd_data <= cfg_padmode;
 	8'h30: cfg_bridge_rd_data <= cfg_mouse_spd;
+	8'h38: cfg_bridge_rd_data <= cfg_linkmidi;
 	default: cfg_bridge_rd_data <= 0;
 	endcase
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [17:0] cfg_s;
-synch_3 #(.WIDTH(18)) s_cfg(
-	{cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
+wire [19:0] cfg_s;
+synch_3 #(.WIDTH(20)) s_cfg(
+	{cfg_linkmidi, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
 	cfg_s, clk_32);
+wire       linkmidi_32  = cfg_s[19];
+wire       stepad_t_32  = cfg_s[18];
 wire [1:0] mouse_spd_32 = cfg_s[17:16];
 wire       cold_t_32    = cfg_s[15];
 wire       reset_t_32   = cfg_s[14];
@@ -616,7 +625,7 @@ wire [31:0] system_ctrl = {
 	2'b00,              // 21:20 scanlines
 	blitter_32,         // 19 blitter (always on for STE)
 	1'b0,               // 18
-	8'h00,              // 17:10 ACSI devices
+	acsi_enable,        // 17:10 ACSI devices (one bit per mounted hard disk)
 	1'b0,               // 9
 	mono_32,            // 8 mono monitor
 	wp_32,              // 7:6 floppy write protect
@@ -642,6 +651,22 @@ wire        sd_ack;
 wire  [8:0] sd_buff_addr;
 wire  [7:0] sd_dout, sd_din;
 wire        sd_dout_strobe;
+
+wire [31:0] hd_size0_74, hd_size1_74, hd_size0, hd_size1;
+synch_3 #(.WIDTH(32)) s_hds0(hd_size0_74, hd_size0, clk_32);   // quasi-static
+synch_3 #(.WIDTH(32)) s_hds1(hd_size1_74, hd_size1, clk_32);
+wire  [7:0] acsi_enable = {6'd0, hd_size1 != 0, hd_size0 != 0};
+
+wire  [1:0] hd_rd, hd_wr;
+wire [31:0] hd_lba;
+wire        hd_ack;
+wire  [7:0] hd_din;
+wire  [7:0] dio_status_in;
+wire  [3:0] dio_status_index;
+wire        dio_ack_t, dio_in_t, dio_out_t;
+wire  [7:0] dio_dma_status;
+wire [15:0] dio_in_reg, dio_out_reg;
+wire [15:0] media_data_in_reg;
 
 st_media media (
 	.clk_74a                    ( clk_74a ),
@@ -671,7 +696,7 @@ st_media media (
 	.tos_done                   ( tos_done ),
 	.data_download              ( data_download ),
 	.data_addr                  ( data_addr ),
-	.data_in_reg                ( data_in_reg ),
+	.data_in_reg                ( media_data_in_reg ),
 	.data_in_strobe             ( data_in_strobe ),
 
 	.img_mounted                ( img_mounted ),
@@ -683,8 +708,48 @@ st_media media (
 	.sd_buff_addr               ( sd_buff_addr ),
 	.sd_dout                    ( sd_dout ),
 	.sd_dout_strobe             ( sd_dout_strobe ),
-	.sd_din                     ( sd_din )
+	.sd_din                     ( sd_din ),
+
+	.hd_rd                      ( hd_rd ),
+	.hd_wr                      ( hd_wr ),
+	.hd_lba                     ( hd_lba ),
+	.hd_ack                     ( hd_ack ),
+	.hd_din                     ( hd_din ),
+	.hd_size0                   ( hd_size0_74 ),
+	.hd_size1                   ( hd_size1_74 )
 );
+
+/* ------------------------------------------------------------------------------ */
+/* ----------------------------- ACSI hard disks -------------------------------- */
+/* ------------------------------------------------------------------------------ */
+// acsi_ctrl answers the ACSI commands that MiST/MiSTer answer on their ARM.
+
+
+acsi_ctrl acsi_ctrl (
+	.clk          ( clk_32 ),
+	.reset        ( st_reset ),
+	.status_in    ( dio_status_in ),
+	.status_index ( dio_status_index ),
+	.dma_ack_t    ( dio_ack_t ),
+	.dma_status   ( dio_dma_status ),
+	.data_in_t    ( dio_in_t ),
+	.data_in_reg  ( dio_in_reg ),
+	.data_out_t   ( dio_out_t ),
+	.data_out_reg ( dio_out_reg ),
+	.blocks0      ( {9'd0, hd_size0[31:9]} ),
+	.blocks1      ( {9'd0, hd_size1[31:9]} ),
+	.hd_rd        ( hd_rd ),
+	.hd_wr        ( hd_wr ),
+	.hd_lba       ( hd_lba ),
+	.hd_ack       ( hd_ack ),
+	.buff_addr    ( sd_buff_addr ),
+	.buff_dout    ( sd_dout ),
+	.buff_wr      ( sd_dout_strobe & hd_ack ),
+	.buff_din     ( hd_din )
+);
+
+// data_in_reg is shared by the TOS download and ACSI reads, never at the same time
+assign data_in_reg = data_download ? media_data_in_reg : dio_in_reg;
 
 /* ------------------------------------------------------------------------------ */
 /* ---------------------------------- Controllers ------------------------------- */
@@ -703,10 +768,18 @@ synch_3 #(.WIDTH(16)) s_c3t(cont3_trig, cont3_trig_s, clk_32);
 synch_3 #(.WIDTH(32)) s_c1j(cont1_joy, cont1_joy_s, clk_32);
 synch_3 #(.WIDTH(16)) s_c4t(cont4_trig, cont4_trig_s, clk_32);
 
-// MiST joystick encoding: [0] right [1] left [2] down [3] up [4] fire [5] fire 2
+// MiST joystick encoding: [0] right [1] left [2] down [3] up [4] fire / A [5] fire 2 / B,
+// and for the STE joypad ports (ste_joypad.v) [6] C [7] Option [13] Pause: X, Y and R here.
 function [15:0] pad2joy(input [31:0] k);
-	pad2joy = {10'd0, k[5], k[4], k[0], k[1], k[2], k[3]};
+	pad2joy = {2'd0, k[9], 5'd0, k[7], k[6], k[5], k[4], k[0], k[1], k[2], k[3]};
 endfunction
+
+// players 3 and 4 in the Dock, when they are controllers (not the keyboard or mouse),
+// are the two extra joysticks of the parallel-port 4-player adapter (Gauntlet II etc.)
+wire        pad3_present = cont3_key_s[31:28] != 4'h0 && cont3_key_s[31:28] != 4'h4 && cont3_key_s[31:28] != 4'h5;
+wire        pad4_present = cont4_key_s[31:28] != 4'h0 && cont4_key_s[31:28] != 4'h4 && cont4_key_s[31:28] != 4'h5;
+wire [15:0] joy2 = pad3_present ? pad2joy(cont3_key_s) : 16'd0;
+wire [15:0] joy3 = pad4_present ? pad2joy(cont4_key_s) : 16'd0;
 
 // Handheld controls follow the Pocket Amiga core: Select opens the on-screen
 // keyboard, Start toggles mouse mode (D-pad moves, A/L = left, B/R = right click).
@@ -760,11 +833,22 @@ wire [15:0] joy0 = pad2joy(cont2_key_s);
 // X = Space and Y = Return. The on-screen keyboard uses the first four slots.
 function [7:0] k(input b, input [7:0] usage); k = b ? usage : 8'h00; endfunction
 wire [15:0] p = cont1_key_s[15:0];
-wire [79:0] pad_keys = osk_visible ? {osk_key, osk_mods[0] ? 8'hE0 : 8'h00, osk_mods[1] ? 8'hE1 : 8'h00, osk_mods[2] ? 8'hE2 : 8'h00, 48'd0} :
+// "STE Joypad Ports" presses F11, which MiSTery's IKBD uses to switch the ports (~60 ms)
+reg        stepad_d = 1'b0;
+reg [20:0] f11_timer = 21'd0;
+always @(posedge clk_32) begin
+	stepad_d <= stepad_t_32;
+	if (stepad_t_32 != stepad_d) f11_timer <= 21'h1FFFFF;
+	else if (f11_timer != 0) f11_timer <= f11_timer - 21'd1;
+end
+wire [7:0] f11_key = f11_timer != 0 ? 8'h44 : 8'h00;
+
+wire [79:0] pad_keys_main = osk_visible ? {osk_key, osk_mods[0] ? 8'hE0 : 8'h00, osk_mods[1] ? 8'hE1 : 8'h00, osk_mods[2] ? 8'hE2 : 8'h00, 48'd0} :
                        pad_keys_mode ? {k(p[0], 8'h52), k(p[1], 8'h51), k(p[2], 8'h50), k(p[3], 8'h4F),   // arrows
                                         k(p[4], 8'h2C), k(p[5], 8'h28), k(p[6], 8'h29), k(p[7], 8'h4B),   // Space Return Esc Help
                                         k(p[8], 8'h3A), k(p[9], 8'h3B)} :                                 // F1 F2
                        {k(p[6], 8'h2C), k(p[7], 8'h28), 64'd0};
+wire [87:0] pad_keys = {pad_keys_main, f11_key};
 
 // Dock keyboard on player 3, Dock mouse on player 4 (type nibbles 4 and 5)
 wire        kbd_present   = cont3_key_s[31:28] == 4'h4;
@@ -870,6 +954,23 @@ wire        st_hsync_n, st_vsync_n, st_hblank_n, st_vblank_n, st_blank_n;
 wire        st_monomode;
 wire [14:0] audio_mix_l, audio_mix_r;
 
+/* ------------------------------------------------------------------------------ */
+/* ------------------------------ MIDI on the link port ------------------------- */
+/* ------------------------------------------------------------------------------ */
+// The ST's MIDI ACIA runs at 31250 baud, the rate Analogue's link-port MIDI cable
+// carries. MIDI IN: link SI -> ACIA RX. MIDI OUT: ACIA TX -> link SO.
+wire midi_tx;
+reg  [2:0] link_si_s = 3'b111;
+always @(posedge clk_32) link_si_s <= {link_si_s[1:0], port_tran_si};
+wire midi_rx = linkmidi_32 ? link_si_s[2] : 1'b1;
+
+// the pad drivers live in the clk_74a-facing top level; keep their inputs registered
+reg  link_midi_74 = 1'b0, midi_tx_74 = 1'b1;
+always @(posedge clk_74a) begin
+	link_midi_74 <= cfg_linkmidi;
+	midi_tx_74   <= midi_tx;
+end
+
 atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had one
 	.clk_96              ( clk_96 ),
 	.clk_32              ( clk_32 ),
@@ -903,14 +1004,14 @@ atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had on
 
 	.midi_out_strobe     ( ),
 	.midi_out            ( ),
-	.midi_rx             ( 1'b1 ),
-	.midi_tx             ( ),
+	.midi_rx             ( midi_rx ),
+	.midi_tx             ( midi_tx ),
 
-	.parallel_in_strobe  ( 1'b1 ),
-	.parallel_in         ( 8'hff ),
+	.parallel_in_strobe  ( ~joy3[4] ),
+	.parallel_in         ( {~joy2[0], ~joy2[1], ~joy2[2], ~joy2[3], ~joy3[0], ~joy3[1], ~joy3[2], ~joy3[3]} ),
 	.parallel_out_strobe ( ),
 	.parallel_out        ( ),
-	.parallel_printer_busy ( 1'b1 ),
+	.parallel_printer_busy ( joy2[4] ),
 
 	.serial_redirect     ( 1'b1 ),
 	.serial_data_out_available ( ),
@@ -925,18 +1026,18 @@ atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had on
 	.uart_tx             ( ),
 
 	.data_in_strobe_rom  ( data_in_strobe ),
-	.data_in_strobe_acsi ( 1'b0 ),
+	.data_in_strobe_acsi ( dio_in_t ),
 	.data_in_reg         ( data_in_reg ),
 	.data_addr           ( data_addr ),
 	.data_download       ( data_download ),
 
-	.data_out_strobe     ( 1'b0 ),
-	.data_out_reg        ( ),
-	.dma_ack             ( 1'b0 ),
-	.dma_status          ( 8'h00 ),
+	.data_out_strobe     ( dio_out_t ),
+	.data_out_reg        ( dio_out_reg ),
+	.dma_ack             ( dio_ack_t ),
+	.dma_status          ( dio_dma_status ),
 	.dma_nak             ( 1'b0 ),
-	.dma_status_in       ( ),
-	.dma_status_index    ( 4'd0 ),
+	.dma_status_in       ( dio_status_in ),
+	.dma_status_index    ( dio_status_index ),
 
 	.img_mounted         ( img_mounted ),
 	.img_wp              ( wp_32 ),

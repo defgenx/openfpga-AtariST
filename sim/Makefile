@@ -51,7 +51,7 @@ $(SYSDIR)/obj/Vst_system_tb: $(SYSDIR)/st_system_tb.sv $(SYSDIR)/sdram_model.sv 
 	cd $(SYSDIR) && for f in shifter_video_async hsyncgen hdegen vsyncgen vdegen vidcnt sndcnt modules; do echo ../../src/fpga/MiSTery/gstmcu/hdl/$$f.v >> files.f; done
 	cd $(SYSDIR) && verilator --binary --timing --no-assert -j 8 -O2 -Wno-fatal -Wno-lint -Wno-style -Wno-MULTIDRIVEN \
 		-Wno-TIMESCALEMOD -Wno-BLKANDNBLK --Mdir obj --top-module st_system_tb \
-		-I../../src/fpga/MiSTery/ikbd/hd63701 -I../../src/fpga/MiSTery/fx68k st_system_tb.sv sdram_model.sv stubs.sv -f files.f
+		-I../../src/fpga/MiSTery/ikbd/hd63701 -I../../src/fpga/MiSTery/fx68k st_system_tb.sv sdram_model.sv stubs.sv ../../src/fpga/core/acsi_ctrl.sv -f files.f
 
 clean:
 	rm -rf *.vvp *.vcd *.ppm *.png obj_* $(SYSDIR)/obj $(SYSDIR)/run $(SYSDIR)/rom $(SYSDIR)/files.f

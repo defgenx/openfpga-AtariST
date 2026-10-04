@@ -226,6 +226,33 @@
         ]
       },
       {
+        "name": "STE Joypad Ports",
+        "id": 14,
+        "type": "action",
+        "enabled": true,
+        "address": "0x80000034",
+        "value": 1
+      },
+      {
+        "name": "Link Port MIDI",
+        "id": 15,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000038",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "Off"
+          },
+          {
+            "value": 1,
+            "name": "On"
+          }
+        ]
+      },
+      {
         "name": "Reset All Settings",
         "id": 12,
         "type": "action",

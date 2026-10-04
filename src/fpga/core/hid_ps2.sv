@@ -16,8 +16,8 @@ module hid_ps2 (
 	input  wire        kbd_present,
 	input  wire [47:0] kbd_codes,
 	input  wire  [7:0] kbd_mods,
-	// keys injected by the pad mapping and the on-screen keyboard (10 HID usages, 0 = none)
-	input  wire [79:0] pad_keys,
+	// keys injected by the pad mapping and the on-screen keyboard (11 HID usages, 0 = none)
+	input  wire [87:0] pad_keys,
 
 	// relative mouse motion, already summed by the caller; pulses on new report
 	input  wire        mouse_event,
@@ -84,7 +84,7 @@ endfunction
 /* Keyboard: diff the current key set against the set already reported      */
 /* ------------------------------------------------------------------------ */
 
-localparam N = 24; // 6 dock keys + 8 modifiers + 10 pad/OSK keys
+localparam N = 25; // 6 dock keys + 8 modifiers + 11 pad/OSK keys
 
 wire [7:0] cur[N];
 genvar gi;
@@ -95,7 +95,7 @@ generate
 	for (gi = 0; gi < 8; gi = gi + 1) begin : g_mods
 		assign cur[6+gi] = (kbd_present && kbd_mods[gi]) ? (8'hE0 + 8'(gi)) : 8'h00;
 	end
-	for (gi = 0; gi < 10; gi = gi + 1) begin : g_pad
+	for (gi = 0; gi < 11; gi = gi + 1) begin : g_pad
 		assign cur[14+gi] = pad_keys[gi*8 +: 8];
 	end
 endgenerate

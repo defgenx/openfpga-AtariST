@@ -96,10 +96,30 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x8000001C`  | Borders        | 0 hide, 1 show                           |
 | `0x80000020`  | Pad mode       | 0 joystick, 1 mouse (default), 2 keys    |
 | `0x80000030`  | Mouse speed    | 0 slow, 1 normal, 2 fast                 |
+| `0x80000034`  | STE Joypad Ports | any write: presses F11 (IKBD port switch) |
+| `0x80000038`  | Link Port MIDI | 0 off, 1 on                              |
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
 
+## ACSI hard disks
+
+On MiST/MiSTer the ARM answers ACSI commands; here `acsi_ctrl.sv` does it in logic. MiSTery's `acsi.v`
+collects the command bytes (6 or 10, ICD prefix included) and raises *busy*; `acsi_ctrl` reads them
+through `dio_status_index`, executes the command and toggles `dio_dma_ack` with the SCSI status.
+Supported: TEST UNIT READY, REQUEST SENSE, READ/WRITE (6 and 10), INQUIRY, MODE SENSE(6),
+READ CAPACITY; FORMAT, SEEK, VERIFY, MODE SELECT, START/STOP and RESERVE/RELEASE succeed without
+doing anything; anything else answers CHECK CONDITION / ILLEGAL REQUEST. Data moves one word per
+128 clocks through `dma.v`'s 16-word FIFO (~500 KB/s); short responses are padded to the FIFO's
+16-byte bursts. Sectors come from data slots 3 and 4 through `st_media`, which serves them with the
+floppy path but a separate `hd_ack`. `sim/system` boots EmuTOS with a FAT16 image and checks it mounts C:.
+
 ## Not ported
 
-ACSI hard disks, MIDI, serial/parallel redirection, Ethernec, Cubase dongles and the Viking card are
-tied off in `core_top.v`. ACSI would follow the same target-command pattern as the floppies.
+Serial/printer redirection, Ethernec, Cubase dongles and the Viking card are tied off in `core_top.v`:
+the Pocket has no port for the first ones, and its scaler cannot take Viking's 1280×1024.
+
+## MIDI
+
+With *Link Port MIDI* on, the MIDI ACIA's TX drives link port SO and SI feeds its RX (synchronised to
+`clk_32`); MIDI's 31,250 baud is the ACIA's native rate. Analogue's Nanoloop *MIDI IN* cable delivers
+MIDI to the Pocket on this port. Off, SO is tri-stated and RX idles high.

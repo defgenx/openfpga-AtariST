@@ -30,6 +30,14 @@ The layout is the table `LAYOUT` in `tools/gen_osk.py`, which generates `src/fpg
 and the font ROM `osk_font.hex` (font8x8 by Daniel Hepper, public domain). Re-run it after editing:
 `python3 tools/gen_osk.py tools/font8x8_basic.h`.
 
+## 4-player adapter and STE joypads
+
+Dock controllers on players 3 and 4 (when they are pads, not the keyboard or mouse) are the two extra
+joysticks of the parallel-port 4-player adapter, wired as on MiST/MiSTer (Gauntlet II, Leatherneck…).
+*STE Joypad Ports* in the menu presses the ST's F11, which MiSTery's IKBD uses to move pads 1 and 2 to
+the STE enhanced ports; there A, B, X, Y and R are the Jaguar pad's A, B, C, Option and Pause. The ST
+starts with the normal ports after every reset.
+
 ## Dock keyboard and mouse
 
 The Dock reports a USB keyboard as player 3 and a USB mouse as player 4 (`cont3/4_key[31:28]` = 4 / 5):

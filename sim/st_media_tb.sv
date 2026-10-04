@@ -17,6 +17,8 @@ localparam TOS_SIZE = 196608;
 localparam [23:0] TOS_BASE = 24'hFC0000;
 `endif
 localparam FDA_SIZE = 737280;
+localparam HD_SIZE = 1048576;
+reg [7:0] hd [0:HD_SIZE-1];
 reg [7:0] tos [0:TOS_SIZE-1];
 reg [7:0] fda [0:FDA_SIZE-1];
 integer i;
@@ -24,6 +26,7 @@ initial begin
 	for (i = 0; i < TOS_SIZE; i = i + 1) tos[i] = (i * 7 + (i >> 8)) & 8'hff;
 	{tos[8], tos[9], tos[10], tos[11]} = {8'h00, TOS_BASE};   // os_base
 	for (i = 0; i < FDA_SIZE; i = i + 1) fda[i] = (i * 13 + (i >> 9)) & 8'hff;
+	for (i = 0; i < HD_SIZE; i = i + 1) hd[i] = (i * 29 + (i >> 9)) & 8'hff;
 end
 
 // ---------------- DUT ----------------
@@ -55,6 +58,7 @@ wire  [8:0] sd_buff_addr;
 wire  [7:0] sd_dout;
 reg   [7:0] sd_din;
 
+reg  [1:0] hd_rd = 0, hd_wr = 0; reg [31:0] hd_lba = 0; wire hd_ack; reg [7:0] hd_din; wire [31:0] hd_size0;
 st_media dut (
 	.clk_74a(clk_74a), .clk_32(clk_32),
 	.bridge_addr(bridge_addr), .bridge_wr(bridge_wr), .bridge_wr_data(bridge_wr_data), .bridge_rd_data(bridge_rd_data),
@@ -65,8 +69,15 @@ st_media dut (
 	.dataslot_allcomplete(allcomplete), .datatable_addr(dt_addr), .datatable_q(dt_q),
 	.cold_req(cold_req), .tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
 	.img_mounted(img_mounted), .img_size(img_size), .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
-	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din)
+	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din),
+	.hd_rd(hd_rd), .hd_wr(hd_wr), .hd_lba(hd_lba), .hd_ack(hd_ack), .hd_din(hd_din), .hd_size0(hd_size0), .hd_size1()
 );
+reg  [7:0] hd_buf [0:511];
+always @(posedge clk_32) begin
+	if (sd_dout_strobe & hd_ack) hd_buf[sd_buff_addr] <= sd_dout;
+	hd_din <= hd_buf[sd_buff_addr];
+	if (hd_ack) begin hd_rd <= 0; hd_wr <= 0; end
+end
 
 // ---------------- APF datatable: 2-cycle registered read ----------------
 reg [31:0] dt_mem [0:255];
@@ -76,6 +87,7 @@ initial begin
 	dt_mem[0] = 0; dt_mem[1] = TOS_SIZE;
 	dt_mem[2] = 1; dt_mem[3] = FDA_SIZE;
 	dt_mem[4] = 2; dt_mem[5] = 0;
+	dt_mem[6] = 3; dt_mem[7] = HD_SIZE;
 end
 always @(posedge clk_74a) begin dt_q1 <= dt_mem[dt_addr]; dt_q <= dt_q1; end
 
@@ -100,6 +112,7 @@ initial begin : apf
 				for (w = 0; w < t_len / 4; w = w + 1) begin
 					base = t_off + w * 4;
 					if (t_id == 0) word = {tos[base], tos[base+1], tos[base+2], tos[base+3]};
+					else if (t_id == 3) word = {hd[base], hd[base+1], hd[base+2], hd[base+3]};
 					else           word = {fda[base], fda[base+1], fda[base+2], fda[base+3]};
 					bridge_addr <= t_baddr + w * 4; bridge_wr_data <= word; bridge_wr <= 1;
 					apf_cycle; bridge_wr <= 0;
@@ -110,7 +123,8 @@ initial begin : apf
 					bridge_addr <= t_baddr + w * 4;
 					repeat (3) apf_cycle;
 					base = t_off + w * 4;
-					{fda[base], fda[base+1], fda[base+2], fda[base+3]} = bridge_rd_data;
+					if (t_id == 3) {hd[base], hd[base+1], hd[base+2], hd[base+3]} = bridge_rd_data;
+					else {fda[base], fda[base+1], fda[base+2], fda[base+3]} = bridge_rd_data;
 				end
 			end
 			repeat (20) apf_cycle;
@@ -197,6 +211,19 @@ initial begin
 	@(posedge clk_74a); ds_update <= 0;
 	wait (img_mounted[0]);
 	if (img_size != 819200) begin $display("remount size %0d", img_size); errors = errors + 1; end
+
+	// ACSI hard disk: size reported, sector read at LBA 1000, write at LBA 1500
+	if (hd_size0 != HD_SIZE) begin $display("hd size %0d", hd_size0); errors = errors + 1; end
+	@(posedge clk_32); hd_lba <= 1000; hd_rd <= 2'b01;
+	wait (hd_ack); wait (!hd_ack);
+	for (k = 0; k < 512; k = k + 1) if (hd_buf[k] !== hd[1000*512 + k]) begin
+		if (errors < 10) $display("hd read mismatch %0d", k); errors = errors + 1; end
+	for (k = 0; k < 512; k = k + 1) hd_buf[k] = 8'h3C ^ k[7:0];
+	@(posedge clk_32); hd_lba <= 1500; hd_wr <= 2'b01;
+	wait (hd_ack); wait (!hd_ack);
+	for (k = 0; k < 512; k = k + 1) if (hd[1500*512 + k] !== (8'h3C ^ k[7:0])) begin
+		if (errors < 10) $display("hd write mismatch %0d", k); errors = errors + 1; end
+	$display("hd sector read/write done");
 
 	// cold restart (a RAM/machine change in the menu): low RAM cleared and TOS reloaded again
 	clear_seen = 0; words_seen = 0;

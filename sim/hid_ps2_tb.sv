@@ -13,7 +13,7 @@ reg         reset = 1;
 reg         kbd_present = 1;
 reg  [47:0] kbd_codes = 0;
 reg   [7:0] kbd_mods = 0;
-reg  [79:0] pad_keys = 0;
+reg  [87:0] pad_keys = 0;
 reg         mouse_event = 0;
 reg  signed [15:0] mouse_dx = 0, mouse_dy = 0;
 reg   [2:0] mouse_buttons = 0;

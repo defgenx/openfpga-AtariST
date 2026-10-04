@@ -58,13 +58,24 @@ module st_media (
 	output reg   [8:0] sd_buff_addr,
 	output reg   [7:0] sd_dout,
 	output reg         sd_dout_strobe,
-	input  wire  [7:0] sd_din
+	input  wire  [7:0] sd_din,
+
+	// ACSI hard disks (clk_32): same sector handshake, separate ack and buffer
+	input  wire  [1:0] hd_rd,
+	input  wire  [1:0] hd_wr,
+	input  wire [31:0] hd_lba,
+	output reg         hd_ack,
+	input  wire  [7:0] hd_din,
+	output reg  [31:0] hd_size0,       // bytes, 0 = no image (clk_74a, quasi-static)
+	output reg  [31:0] hd_size1
 );
 
 // Slot ids, kept in sync with data.json
 localparam [15:0] SLOT_TOS   = 16'd0;
 localparam [15:0] SLOT_FDD_A = 16'd1;
 localparam [15:0] SLOT_FDD_B = 16'd2;
+localparam [15:0] SLOT_HDD_0 = 16'd3;
+localparam [15:0] SLOT_HDD_1 = 16'd4;
 
 localparam [31:0] RBUF_ADDR = 32'h1000_0000;
 localparam [31:0] WBUF_ADDR = 32'h1000_2000;
@@ -146,6 +157,8 @@ always @(posedge clk_74a) begin
 			3'd7: begin
 				if (dt_id == SLOT_FDD_A && datatable_q != 0) begin size_74[0] <= datatable_q; mount_t_74[0] <= ~mount_t_74[0]; end
 				if (dt_id == SLOT_FDD_B && datatable_q != 0) begin size_74[1] <= datatable_q; mount_t_74[1] <= ~mount_t_74[1]; end
+				if (dt_id == SLOT_HDD_0) hd_size0 <= datatable_q;
+				if (dt_id == SLOT_HDD_1) hd_size1 <= datatable_q;
 				dt_idx <= dt_idx + 6'd1;
 				if (dt_idx == 6'd31) begin
 					dt_scanning <= 1'b0;
@@ -161,6 +174,8 @@ always @(posedge clk_74a) begin
 		if (dataslot_update_id == SLOT_TOS) tos_t_74 <= ~tos_t_74;
 		if (dataslot_update_id == SLOT_FDD_A) begin size_74[0] <= dataslot_update_size; mount_t_74[0] <= ~mount_t_74[0]; end
 		if (dataslot_update_id == SLOT_FDD_B) begin size_74[1] <= dataslot_update_size; mount_t_74[1] <= ~mount_t_74[1]; end
+		if (dataslot_update_id == SLOT_HDD_0) hd_size0 <= dataslot_update_size;
+		if (dataslot_update_id == SLOT_HDD_1) hd_size1 <= dataslot_update_size;
 	end
 end
 
@@ -247,6 +262,7 @@ reg  [5:0] pace;
 reg  [2:0] hdr_cnt;
 reg  [8:0] byte_idx;
 reg  [1:0] phase;               // RAM reads: set address, wait, use q
+reg        hd_cur;              // the request being served is an ACSI one
 reg  [1:0] mount_seen;
 reg  [1:0] mount_pending;
 reg  [3:0] mount_cnt;
@@ -268,6 +284,9 @@ initial begin
 	mount_pending = 2'b00;
 	img_mounted = 2'b00;
 	sd_ack = 1'b0;
+	hd_ack = 1'b0;
+	hd_size0 = 32'd0;
+	hd_size1 = 32'd0;
 	data_in_strobe = 1'b0;
 	data_download = 1'b0;
 	tos_done = 1'b0;
@@ -381,6 +400,7 @@ always @(posedge clk_32) begin
 	// ---------------- FDC ----------------
 	S_IDLE: begin
 		sd_ack <= 1'b0;
+		hd_ack <= 1'b0;
 		if (tos_pending) begin
 			// reload TOS; tos_done low holds the ST in reset meanwhile
 			tos_pending <= 1'b0;
@@ -392,6 +412,7 @@ always @(posedge clk_32) begin
 			state <= S_MOUNT;
 		end else if (|sd_rd && !req_busy) begin
 			sd_ack <= 1'b1;
+			hd_cur <= 1'b0;
 			req_write      <= 1'b0;
 			req_slot       <= sd_rd[1] ? SLOT_FDD_B : SLOT_FDD_A;
 			req_offset     <= {sd_lba[22:0], 9'd0};
@@ -401,8 +422,27 @@ always @(posedge clk_32) begin
 			state <= S_FD_RD_WAIT;
 		end else if (|sd_wr && !req_busy) begin
 			sd_ack <= 1'b1;
+			hd_cur <= 1'b0;
 			req_slot   <= sd_wr[1] ? SLOT_FDD_B : SLOT_FDD_A;
 			req_offset <= {sd_lba[22:0], 9'd0};
+			byte_idx <= 9'd0;
+			phase <= 2'd0;
+			state <= S_FD_WR_DATA;
+		end else if (|hd_rd && !req_busy) begin
+			hd_ack <= 1'b1;
+			hd_cur <= 1'b1;
+			req_write      <= 1'b0;
+			req_slot       <= hd_rd[1] ? SLOT_HDD_1 : SLOT_HDD_0;
+			req_offset     <= {hd_lba[22:0], 9'd0};
+			req_length     <= 32'd512;
+			req_bridgeaddr <= RBUF_ADDR;
+			req_t          <= ~req_t;
+			state <= S_FD_RD_WAIT;
+		end else if (|hd_wr && !req_busy) begin
+			hd_ack <= 1'b1;
+			hd_cur <= 1'b1;
+			req_slot   <= hd_wr[1] ? SLOT_HDD_1 : SLOT_HDD_0;
+			req_offset <= {hd_lba[22:0], 9'd0};
 			byte_idx <= 9'd0;
 			phase <= 2'd0;
 			state <= S_FD_WR_DATA;
@@ -447,7 +487,7 @@ always @(posedge clk_32) begin
 			phase <= 2'd0;
 			wbuf_we <= 1'b1;
 			wbuf_waddr <= byte_idx;
-			wbuf_wdata <= sd_din;
+			wbuf_wdata <= hd_cur ? hd_din : sd_din;
 			byte_idx <= byte_idx + 9'd1;
 			if (byte_idx == 9'd511) begin
 				req_write      <= 1'b1;
@@ -461,9 +501,10 @@ always @(posedge clk_32) begin
 
 	S_FD_WR_WAIT: if (!req_busy) state <= S_FD_END;
 
-	// dropping sd_ack completes the FDC's request
+	// dropping the ack completes the FDC's (or ACSI's) request
 	S_FD_END: begin
 		sd_ack <= 1'b0;
+		hd_ack <= 1'b0;
 		state <= S_IDLE;
 	end
 

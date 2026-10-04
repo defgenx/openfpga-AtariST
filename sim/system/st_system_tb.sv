@@ -29,7 +29,45 @@ end
 reg porb = 0;
 reg st_reset = 1;
 reg [2:0] mem_sel = 1;
-wire [31:0] system_ctrl = {23'd0, 1'b0 /*mono*/, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
+reg  [7:0] acsi_en = 8'h00;
+wire [31:0] system_ctrl = {14'd0, acsi_en, 1'b0, 1'b0 /*mono*/, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
+
+// ---- ACSI hard disk: acsi_ctrl (as in core_top) + a disk image served like st_media ----
+wire [7:0]  dio_status_in;  wire [3:0] dio_status_index;
+wire        dio_ack_t, dio_in_t, dio_out_t; wire [7:0] dio_dma_status;
+wire [15:0] dio_in_reg, dio_out_reg;
+wire [1:0]  hd_rd, hd_wr; wire [31:0] hd_lba; wire [7:0] hd_din;
+reg         hd_ack = 0; reg [8:0] hd_baddr = 0; reg [7:0] hd_bdout = 0; reg hd_bwr = 0;
+reg  [7:0]  disk [0:(32*1024*1024)-1];
+integer     disk_blocks = 0, hd_reads = 0, hd_writes = 0;
+acsi_ctrl acsi (
+	.clk(clk_32), .reset(st_reset),
+	.status_in(dio_status_in), .status_index(dio_status_index),
+	.dma_ack_t(dio_ack_t), .dma_status(dio_dma_status), .data_in_t(dio_in_t), .data_in_reg(dio_in_reg),
+	.data_out_t(dio_out_t), .data_out_reg(dio_out_reg),
+	.blocks0(disk_blocks), .blocks1(32'd0),
+	.hd_rd(hd_rd), .hd_wr(hd_wr), .hd_lba(hd_lba), .hd_ack(hd_ack),
+	.buff_addr(hd_baddr), .buff_dout(hd_bdout), .buff_wr(hd_bwr & hd_ack), .buff_din(hd_din)
+);
+integer bi;
+always @(posedge clk_32) begin
+	if (|hd_rd && !hd_ack) begin
+		hd_ack <= 1; hd_reads = hd_reads + 1;
+		repeat (50) @(posedge clk_32);
+		for (bi = 0; bi < 512; bi = bi + 1) begin
+			hd_baddr <= bi[8:0]; hd_bdout <= disk[hd_lba * 512 + bi]; hd_bwr <= 1;
+			@(posedge clk_32); hd_bwr <= 0; @(posedge clk_32);
+		end
+		hd_ack <= 0;
+	end else if (|hd_wr && !hd_ack) begin
+		hd_ack <= 1; hd_writes = hd_writes + 1;
+		for (bi = 0; bi < 512; bi = bi + 1) begin
+			hd_baddr <= bi[8:0]; @(posedge clk_32); @(posedge clk_32); @(posedge clk_32);
+			disk[hd_lba * 512 + bi] = hd_din;
+		end
+		hd_ack <= 0;
+	end
+end
 
 wire [15:0] dq;
 atarist_sdram #(1'b0, 1'b1) atarist (
@@ -41,8 +79,9 @@ atarist_sdram #(1'b0, 1'b1) atarist (
 	.parallel_in_strobe(1'b1), .parallel_in(8'hff), .parallel_out_strobe(), .parallel_out(), .parallel_printer_busy(1'b1),
 	.serial_redirect(1'b1), .serial_data_out_available(), .serial_strobe_out(1'b0), .serial_data_out(), .serial_status_out(),
 	.serial_strobe_in(1'b0), .serial_data_in(8'h00), .uart_ctsb(1'b0), .uart_rtsb(), .uart_rx(1'b1), .uart_tx(),
-	.data_in_strobe_rom(1'b0), .data_in_strobe_acsi(1'b0), .data_in_reg(16'h0), .data_addr(23'h0), .data_download(1'b0),
-	.data_out_strobe(1'b0), .data_out_reg(), .dma_ack(1'b0), .dma_status(8'h0), .dma_nak(1'b0), .dma_status_in(), .dma_status_index(4'd0),
+	.data_in_strobe_rom(1'b0), .data_in_strobe_acsi(dio_in_t), .data_in_reg(dio_in_reg), .data_addr(23'h0), .data_download(1'b0),
+	.data_out_strobe(dio_out_t), .data_out_reg(dio_out_reg), .dma_ack(dio_ack_t), .dma_status(dio_dma_status), .dma_nak(1'b0),
+	.dma_status_in(dio_status_in), .dma_status_index(dio_status_index),
 	.img_mounted(2'b00), .img_wp(2'b11), .img_size(32'd0), .sd_lba(), .sd_rd(), .sd_wr(), .sd_ack(1'b0),
 	.sd_buff_addr(9'd0), .sd_dout(8'h0), .sd_din(), .sd_dout_strobe(1'b0), .LED(),
 	.eth_status(), .eth_mac_begin(1'b0), .eth_mac_strobe(1'b0), .eth_mac_byte(8'h0), .eth_tx_read_begin(1'b0),
@@ -62,6 +101,8 @@ task report(input [8*12-1:0] tag);
 		$display("[%0s] PANIC: exception %0d, SR=%04x PC=%08x", tag, L(24'h3c4), W(24'h3cc), {W(24'h3ce), W(24'h3d0)});
 	else
 		$display("[%0s] no panic recorded", tag);
+	$display("[%0s] _drvbits=%08x (C: %0s) acsi sector reads=%0d writes=%0d", tag, L(24'h4c2),
+		L(24'h4c2) & 32'h4 ? "present" : "absent", hd_reads, hd_writes);
 endtask
 
 task run_ms(input integer ms);
@@ -69,8 +110,14 @@ task run_ms(input integer ms);
 endtask
 
 integer ms = 400, m, m2, i;
+string hdfile;
 initial begin
 	if ($value$plusargs("mem=%d", m)) mem_sel = m[2:0];
+	if ($value$plusargs("hd=%s", hdfile)) begin
+		$readmemh(hdfile, disk);
+		void'($value$plusargs("hdblocks=%d", disk_blocks));
+		acsi_en = 8'h01;
+	end
 	// set by the TOS download on hardware; the model preloads memory instead
 	if ($test$plusargs("tosbase=fc0000")) atarist.tos192k = 1'b1;
 	void'($value$plusargs("ms=%d", ms));
