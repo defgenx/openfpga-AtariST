@@ -45,9 +45,11 @@ else
 	command -v curl >/dev/null || die "curl is needed to download the release"
 	command -v unzip >/dev/null || die "unzip is needed to unpack the release"
 	TMP="$(mktemp -d)"
-	# newest release including pre-releases (/releases/latest skips those)
-	url="$(curl -fsSL "https://api.github.com/repos/$REPO/releases" \
-		| grep -o "\"browser_download_url\": *\"[^\"]*/$CORE.zip\"" | head -1 | sed 's/.*"\(http[^"]*\)"$/\1/')" || true
+	# highest version among all releases, pre-releases included (/releases/latest skips those)
+	url="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=100" \
+		| grep -o "https://[^\"]*/releases/download/v[0-9][^/\"]*/$CORE.zip" \
+		| sed 's#.*/download/v\([^/]*\)/.*#\1 &#' \
+		| sort -t. -k1,1n -k2,2n -k3,3n | tail -1 | cut -d' ' -f2)" || true
 	[ -n "$url" ] || die "could not find a release of $REPO"
 	say "Downloading $url"
 	curl -fL --progress-bar -o "$TMP/core.zip" "$url" || die "download failed"
