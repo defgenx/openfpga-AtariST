@@ -2,18 +2,23 @@
 
 ## 1. Copy the core to the microSD card
 
-**The easy way:** put the microSD card in your computer and run, from a clone of the repo or on its own
-after downloading `install.sh` from the release (macOS or Linux):
+**The easy way:** put the microSD card in your computer and run the installer, from a clone of the repo
+or on its own after downloading it from the release page:
 
-```sh
-./install.sh              # finds the Pocket SD card, asks to confirm, installs, offers to eject
-./install.sh --dry-run    # show what would be copied, change nothing
-./install.sh --sd /Volumes/POCKET   # name the card yourself
-```
+| System        | Run                                                                 |
+|---------------|---------------------------------------------------------------------|
+| Windows       | double-click **`install.bat`** (or `.\install.ps1` in PowerShell)  |
+| macOS / Linux | `./install.sh`                                                      |
 
-It never replaces a file already on the card: existing files (for example a `tos.img` you put there)
-are skipped and listed. To update the core, delete `Cores/defgenx.AtariST/` from the card and run it
-again. Without a built core next to it, the script downloads the newest release from GitHub.
+It finds the Pocket SD card, asks you to confirm, copies the core, EmuTOS and this guide, and offers to
+eject the card. Options: `--dry-run` / `-DryRun` shows what would be copied and changes nothing;
+`--sd /Volumes/POCKET` / `-SD E:\` names the card yourself.
+
+**It never replaces a file without asking.** Files already on the card that are identical are skipped.
+For each one that differs (for example a `tos.img` you put there) it asks
+`Replace it? [y]es / [N]o / [a]ll / [s]kip all`; pressing Enter keeps the card's file. Run without a
+console (or with the dry-run option), it never replaces anything and lists what differs. Without a
+built core next to it, the installer downloads the newest release from GitHub.
 
 **By hand:**
 

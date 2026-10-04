@@ -6,8 +6,11 @@
 #   ./install.sh --sd /Volumes/POCKET
 #   ./install.sh --dry-run       show what would be copied, change nothing
 #
-# Files already on the card are NEVER replaced: they are skipped and listed.
-# To update a file, delete it from the card first and run the script again.
+# On Windows use install.bat (double-click) / install.ps1, or run this under Git Bash.
+#
+# Files already on the card are never replaced silently: identical ones are skipped,
+# and for each one that differs you are asked (default: keep the card's file).
+# Without a terminal (or with --dry-run) nothing on the card is ever replaced.
 #
 set -euo pipefail
 
@@ -22,13 +25,21 @@ while [ $# -gt 0 ]; do
 		--sd) SD="${2:-}"; shift 2 ;;
 		--sd=*) SD="${1#--sd=}"; shift ;;
 		--dry-run|-n) DRY_RUN=1; shift ;;
-		-h|--help) sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		-h|--help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "unknown option: $1 (see --help)" >&2; exit 1 ;;
 	esac
 done
 
 say()  { printf '%s\n' "$*"; }
 die()  { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+# ask PROMPT DEFAULT -> answer on stdout; without a terminal the default is used
+INTERACTIVE=0; [ -t 0 ] && INTERACTIVE=1
+ask() {
+	local a=""
+	if [ $INTERACTIVE -eq 1 ]; then read -r -p "$1 " a || a=""; fi
+	printf '%s' "${a:-$2}"
+}
 
 # ---------------------------------------------------------------------------
 # 1. Files to install: local dist/ when it holds a built core, else the release
@@ -69,7 +80,14 @@ is_pocket_card() {
 
 if [ -z "$SD" ]; then
 	candidates=()
-	for base in /Volumes /media/"${USER:-}" /run/media/"${USER:-}" /media /mnt; do
+	bases=(/Volumes /media/"${USER:-}" /run/media/"${USER:-}" /media /mnt)
+	# Git Bash / MSYS / Cygwin on Windows: drive letters are /d, /e ... (skip the system drive)
+	case "$(uname -s)" in
+		MINGW*|MSYS*|CYGWIN*)
+			bases=()
+			for d in /[d-z] /cygdrive/[d-z]; do [ -d "$d" ] && candidates+=("$d"); done ;;
+	esac
+	for base in ${bases[@]+"${bases[@]}"}; do
 		[ -d "$base" ] || continue
 		for v in "$base"/*; do
 			[ -d "$v" ] && [ -w "$v" ] || continue
@@ -84,8 +102,7 @@ if [ -z "$SD" ]; then
 	if [ ${#pocket[@]} -eq 1 ]; then
 		SD="${pocket[0]}"
 		say "Found Pocket SD card: $SD"
-		read -r -p "Install there? [Y/n] " ok
-		case "$ok" in [nN]*) die "aborted" ;; esac
+		case "$(ask "Install there? [Y/n]" y)" in [nN]*) die "aborted" ;; esac
 	else
 		list=("${pocket[@]+"${pocket[@]}"}")
 		[ ${#list[@]} -eq 0 ] && list=("${candidates[@]+"${candidates[@]}"}")
@@ -94,7 +111,8 @@ if [ -z "$SD" ]; then
 		[ ${#pocket[@]} -gt 1 ] && say "Several Pocket cards found:"
 		i=1
 		for v in "${list[@]}"; do say "  $i) $v"; i=$((i + 1)); done
-		read -r -p "Number of the SD card to install to: " n
+		[ $INTERACTIVE -eq 1 ] || die "several volumes found - pass --sd PATH"
+		n="$(ask "Number of the SD card to install to:" "")"
 		[[ "$n" =~ ^[0-9]+$ ]] && [ "$n" -ge 1 ] && [ "$n" -le ${#list[@]} ] || die "invalid choice"
 		SD="${list[$((n - 1))]}"
 	fi
@@ -113,49 +131,58 @@ CP=(cp)
 [ "$(uname)" = "Darwin" ] && CP=(cp -X)
 
 copied=0
-skipped=()
-cd "$SRC"
-while IFS= read -r -d '' f; do
-	rel="${f#./}"
-	case "$(basename "$rel")" in .DS_Store|._*|.keep) continue ;; esac
-	dst="$SD/$rel"
+replaced=0
+same=0
+kept=()
+policy=""   # "all" = replace every differing file, "none" = keep every one
+
+# install_file SRC REL: copy SRC to $SD/REL, asking before replacing a different file
+install_file() {
+	local src="$1" rel="$2" dst="$SD/$2" verb="copied  " a
 	if [ -e "$dst" ]; then
-		skipped+=("$rel")
-		continue
+		if cmp -s "$src" "$dst"; then same=$((same + 1)); return; fi
+		if [ $DRY_RUN -eq 1 ] || [ $INTERACTIVE -eq 0 ] || [ "$policy" = "none" ]; then kept+=("$rel"); return; fi
+		if [ "$policy" != "all" ]; then
+			a="$(ask "$rel already exists and differs. Replace it? [y]es/[N]o/[a]ll/[s]kip all" n)"
+			case "$a" in
+				[aA]*) policy="all" ;;
+				[sS]*) policy="none"; kept+=("$rel"); return ;;
+				[yY]*) ;;
+				*) kept+=("$rel"); return ;;
+			esac
+		fi
+		verb="replaced"
 	fi
 	if [ $DRY_RUN -eq 1 ]; then
 		say "would copy  $rel"
 	else
 		mkdir -p "$(dirname "$dst")"
-		"${CP[@]}" "$f" "$dst"
-		say "copied      $rel"
+		"${CP[@]}" "$src" "$dst"
+		say "$verb    $rel"
 	fi
-	copied=$((copied + 1))
-done < <(find . -type f -print0 | sort -z)
+	if [ "$verb" = "replaced" ]; then replaced=$((replaced + 1)); else copied=$((copied + 1)); fi
+}
 
-# the install guide goes along, under a name that cannot clash with Pocket files
-guide="$HERE/INSTALL.md"
-[ -f "$guide" ] || guide="$SRC/AtariST-INSTALL.md"
-if [ -f "$guide" ] && [ "$guide" != "$SD/AtariST-INSTALL.md" ]; then
-	if [ -e "$SD/AtariST-INSTALL.md" ]; then
-		skipped+=("AtariST-INSTALL.md")
-	elif [ $DRY_RUN -eq 1 ]; then
-		say "would copy  AtariST-INSTALL.md"; copied=$((copied + 1))
-	else
-		"${CP[@]}" "$guide" "$SD/AtariST-INSTALL.md"; say "copied      AtariST-INSTALL.md"; copied=$((copied + 1))
-	fi
+cd "$SRC"
+# file list on fd 3 so the questions can read the terminal on stdin
+while IFS= read -r -d '' f <&3; do
+	rel="${f#./}"
+	case "$(basename "$rel")" in .DS_Store|._*|.keep) continue ;; esac
+	install_file "$f" "$rel"
+done 3< <(find . -type f -print0 | sort -z)
+
+# the install guide goes along (the release zip already carries it as AtariST-INSTALL.md)
+if [ ! -f "$SRC/AtariST-INSTALL.md" ] && [ -f "$HERE/INSTALL.md" ]; then
+	install_file "$HERE/INSTALL.md" "AtariST-INSTALL.md"
 fi
 
 say ""
-if [ $DRY_RUN -eq 1 ]; then say "Dry run: $copied file(s) would be copied to $SD"; else say "Copied $copied file(s) to $SD"; fi
-if [ ${#skipped[@]} -gt 0 ]; then
-	say "Left untouched (already on the card, not replaced): ${#skipped[@]}"
-	for s in "${skipped[@]}"; do say "  - $s"; done
-	case " ${skipped[*]} " in
-		*"Cores/$CORE/atarist.rbf_r"*)
-			say "The core itself was already installed. To update it, delete"
-			say "  $SD/Cores/$CORE/  and run this script again." ;;
-	esac
+if [ $DRY_RUN -eq 1 ]; then say "Dry run: $copied file(s) would be copied to $SD"
+else say "Copied $copied new file(s), replaced $replaced, $same already up to date on $SD"; fi
+if [ ${#kept[@]} -gt 0 ]; then
+	say "Kept the card's version (differs from this release): ${#kept[@]}"
+	for s in "${kept[@]}"; do say "  - $s"; done
+	[ $INTERACTIVE -eq 0 ] && [ $DRY_RUN -eq 0 ] && say "Run the script in a terminal to be asked about replacing them."
 fi
 [ $DRY_RUN -eq 1 ] && exit 0
 
@@ -164,8 +191,7 @@ fi
 # ---------------------------------------------------------------------------
 
 sync
-read -r -p "Eject the SD card now? [Y/n] " ej
-case "$ej" in
+case "$(ask "Eject the SD card now? [Y/n]" "$([ $INTERACTIVE -eq 1 ] && echo y || echo n)")" in
 	[nN]*) say "Remember to eject the card before removing it." ;;
 	*)
 		if [ "$(uname)" = "Darwin" ]; then

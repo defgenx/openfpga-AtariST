@@ -23,8 +23,9 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
 ## Installing
 
-Put the microSD card in your computer and run `./install.sh`: it finds the card and copies the core
-without replacing anything already there. Or unzip the release onto the card by hand. EmuTOS is
+Put the microSD card in your computer and run the installer: double-click `install.bat` on Windows, or
+`./install.sh` on macOS/Linux. It finds the card and copies the core, and asks before replacing any file
+already there. Or unzip the release onto the card by hand. EmuTOS is
 included, so the core boots to the GEM desktop without any other file. See **[INSTALL.md](INSTALL.md)** for disks, original TOS, settings,
 controls and troubleshooting.
 
