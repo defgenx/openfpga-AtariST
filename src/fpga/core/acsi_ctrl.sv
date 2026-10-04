@@ -35,28 +35,30 @@ module acsi_ctrl (
 	input  wire  [8:0] buff_addr,
 	input  wire  [7:0] buff_dout,
 	input  wire        buff_wr,
-	output reg   [7:0] buff_din
+	output reg   [7:0] buff_din      // registered RAM output, valid 1 clock after buff_addr
 );
 
 localparam [3:0] STATUS_IDX = 4'd10;   // acsi.v: {target, 4'b0, busy}
 localparam PACE = 8'd127;              // clocks per DMA word: keeps the 16-word FIFO in range
 
 /* ------------------------------------------------------------------------ */
-/* 512-byte sector buffer: port A for st_media, port B for this FSM          */
+/* 512-byte sector buffer, one port: st_media owns it while hd_ack is high,   */
+/* this FSM the rest of the time, so a single M10K block is enough.          */
 /* ------------------------------------------------------------------------ */
 reg  [7:0] buf_mem[512];
 reg  [8:0] b_addr;
 reg  [7:0] b_wdata;
 reg        b_we;
-reg  [7:0] b_q;
+wire [8:0] m_addr  = hd_ack ? buff_addr : b_addr;
+wire       m_we    = hd_ack ? buff_wr   : b_we;
+wire [7:0] m_wdata = hd_ack ? buff_dout : b_wdata;
+reg  [7:0] m_q;
 always @(posedge clk) begin
-	if (buff_wr) buf_mem[buff_addr] <= buff_dout;
-	buff_din <= buf_mem[buff_addr];
+	if (m_we) buf_mem[m_addr] <= m_wdata;
+	m_q <= buf_mem[m_addr];
 end
-always @(posedge clk) begin
-	if (b_we) buf_mem[b_addr] <= b_wdata;
-	b_q <= buf_mem[b_addr];
-end
+wire [7:0] b_q = m_q;
+always @(*) buff_din = m_q;
 
 /* ------------------------------------------------------------------------ */
 /* Command state                                                             */

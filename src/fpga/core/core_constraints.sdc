@@ -32,6 +32,10 @@ set_multicycle_path -from [get_clocks $CLK_32] -to [get_clocks $CLK_96] -end -se
 set_multicycle_path -from [get_clocks $CLK_32] -to [get_clocks $CLK_96] -end -hold 1
 set_multicycle_path -from [get_clocks $CLK_128] -to [get_clocks $CLK_32] -setup 2
 set_multicycle_path -from [get_clocks $CLK_128] -to [get_clocks $CLK_32] -hold 1
+# mist.sdc's clk[2] -> clk[0]: Viking video addresses (128 MHz) into the SDRAM controller (96 MHz).
+# Live only with STE Turbo (STEroids enables the Viking logic).
+set_multicycle_path -from [get_clocks $CLK_128] -to [get_clocks $CLK_96] -setup 2
+set_multicycle_path -from [get_clocks $CLK_128] -to [get_clocks $CLK_96] -hold 1
 
 set_multicycle_path -start -setup -from [get_keepers {ic|atarist|fx68k|Ir[*]}] -to [get_keepers {ic|atarist|fx68k|microAddr[*]}] 2
 set_multicycle_path -start -hold  -from [get_keepers {ic|atarist|fx68k|Ir[*]}] -to [get_keepers {ic|atarist|fx68k|microAddr[*]}] 1

@@ -82,17 +82,27 @@ and pick them in *Core Settings → Hard Disk 0 / 1*, then *Cold Restart*. EmuTO
 as C:, D: … with no driver; original Atari TOS needs a hard-disk driver installed on the image
 (AHDI, HDDriver or ICD). Writing is supported, so keep a backup of images you care about.
 
-## 3c. MIDI (optional)
+## 3c. MIDI, serial and two-Pocket games (optional)
 
-Set *Core Settings → Link Port MIDI* to *On*. The link port then carries the ST's MIDI port at 31,250
-baud, 3.3 V:
+Set *Core Settings → Link Port* to *MIDI* or *Serial*. The link port then carries the ST's MIDI port
+(31,250 baud) or its RS-232 port (any baud the software sets), at 3.3 V:
 
 * **MIDI IN** (keyboard, sequencer → ST): Analogue's *Nanoloop Pocket to MIDI IN* cable, plugged into a
   device's MIDI OUT.
 * **MIDI OUT** (ST → synth): no official cable; the standard 3.3 V DIY wiring is link port pin 2 (SO)
   through 10 Ω to DIN pin 5, and 3.3 V through 33 Ω to DIN pin 4, ground to DIN pin 2.
 
+* **Two Pockets**: a standard Game Boy link cable crosses SO and SI, so two Pockets set to *MIDI* form a
+  MIDI ring for **MIDI Maze** (set the same on both, start MIDI Maze on each), and two set to *Serial* are a
+  null-modem pair for serial two-player games.
+
 Leave it *Off* when using the link port for anything else.
+
+## 3d. Cartridge (optional)
+
+Pick a cartridge ROM (`.stc`, up to 128 KB; Hatari's 4-byte header is skipped) in *Core Settings →
+Cartridge*; the ST cold-restarts with it plugged in at `$FA0000`. *Cubase Dongle* emulates the Cubase 2/3
+copy-protection key instead.
 
 ## 4. Start it
 

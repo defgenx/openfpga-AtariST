@@ -18,6 +18,8 @@ localparam [23:0] TOS_BASE = 24'hFC0000;
 `endif
 localparam FDA_SIZE = 737280;
 localparam HD_SIZE = 1048576;
+localparam CART_SIZE = 131076;   // .stc with a 4-byte header
+reg [7:0] cart [0:CART_SIZE-1];
 reg [7:0] hd [0:HD_SIZE-1];
 reg [7:0] tos [0:TOS_SIZE-1];
 reg [7:0] fda [0:FDA_SIZE-1];
@@ -27,6 +29,7 @@ initial begin
 	{tos[8], tos[9], tos[10], tos[11]} = {8'h00, TOS_BASE};   // os_base
 	for (i = 0; i < FDA_SIZE; i = i + 1) fda[i] = (i * 13 + (i >> 9)) & 8'hff;
 	for (i = 0; i < HD_SIZE; i = i + 1) hd[i] = (i * 29 + (i >> 9)) & 8'hff;
+	for (i = 0; i < CART_SIZE; i = i + 1) cart[i] = (i * 3 + 7) & 8'hff;
 end
 
 // ---------------- DUT ----------------
@@ -88,6 +91,7 @@ initial begin
 	dt_mem[2] = 1; dt_mem[3] = FDA_SIZE;
 	dt_mem[4] = 2; dt_mem[5] = 0;
 	dt_mem[6] = 3; dt_mem[7] = HD_SIZE;
+	dt_mem[8] = 5; dt_mem[9] = CART_SIZE;
 end
 always @(posedge clk_74a) begin dt_q1 <= dt_mem[dt_addr]; dt_q <= dt_q1; end
 
@@ -113,6 +117,7 @@ initial begin : apf
 					base = t_off + w * 4;
 					if (t_id == 0) word = {tos[base], tos[base+1], tos[base+2], tos[base+3]};
 					else if (t_id == 3) word = {hd[base], hd[base+1], hd[base+2], hd[base+3]};
+					else if (t_id == 5) word = {cart[base], cart[base+1], cart[base+2], cart[base+3]};
 					else           word = {fda[base], fda[base+1], fda[base+2], fda[base+3]};
 					bridge_addr <= t_baddr + w * 4; bridge_wr_data <= word; bridge_wr <= 1;
 					apf_cycle; bridge_wr <= 0;
@@ -146,6 +151,7 @@ always @(posedge clk_32) if (sd_ack) begin sd_rd <= 0; sd_wr <= 0; end
 integer errors = 0;
 integer words_seen = 0;
 integer clear_seen = 0;
+integer k2;
 reg strobe_d = 0;
 reg [23:0] exp_byte_addr;
 always @(posedge clk_32) begin
@@ -156,6 +162,13 @@ always @(posedge clk_32) begin
 			errors = errors + 1;
 		end
 		clear_seen = clear_seen + 1;
+	end else if (data_in_strobe != strobe_d && words_seen >= TOS_SIZE / 2) begin
+		k2 = words_seen - TOS_SIZE / 2;
+		if ({data_addr, 1'b0} != 24'hFA0000 + k2 * 2 || data_in_reg != {cart[4 + k2*2], cart[5 + k2*2]}) begin
+			if (errors < 10) $display("cart mismatch word %0d: addr %06x data %04x", k2, {data_addr, 1'b0}, data_in_reg);
+			errors = errors + 1;
+		end
+		words_seen = words_seen + 1;
 	end else if (data_in_strobe != strobe_d) begin
 		exp_byte_addr = TOS_BASE + words_seen * 2;
 		if ({data_addr, 1'b0} != exp_byte_addr || data_in_reg != {tos[words_seen*2], tos[words_seen*2+1]}) begin
@@ -182,7 +195,7 @@ initial begin
 	wait (tos_done);
 	$display("low RAM cleared: %0d words; TOS loaded: %0d words at t=%0t", clear_seen, words_seen, $time);
 	if (clear_seen != 2048) begin $display("expected 2048 cleared words"); errors = errors + 1; end
-	if (words_seen != TOS_SIZE / 2) begin $display("expected %0d words", TOS_SIZE/2); errors = errors + 1; end
+	if (words_seen != TOS_SIZE / 2 + 65536) begin $display("expected %0d TOS + 65536 cartridge words, got %0d", TOS_SIZE/2, words_seen); errors = errors + 1; end
 	repeat (100) @(posedge clk_32);
 	if (!mounted_a) begin $display("drive A not mounted"); errors = errors + 1; end
 
@@ -234,7 +247,7 @@ initial begin
 	join
 	wait (tos_done);
 	$display("cold restart: %0d words cleared, %0d TOS words reloaded", clear_seen, words_seen);
-	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2) begin $display("cold restart incomplete"); errors = errors + 1; end
+	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2 + 65536) begin $display("cold restart incomplete"); errors = errors + 1; end
 
 	if (errors == 0) $display("PASS");
 	else $display("FAIL: %0d errors", errors);

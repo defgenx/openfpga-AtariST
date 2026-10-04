@@ -9,12 +9,14 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
 ## Features
 
-* ST, STE and Mega STE (16 MHz) machines, 512 KB – 14 MB RAM, cycle-accurate 68000 (FX68K)
+* ST, STE, Mega STE (16 MHz) and STE Turbo (16 MHz STE with a fast bus, MiSTery's *STEroids*) machines, 512 KB – 14 MB RAM, cycle-accurate 68000 (FX68K)
 * Ready to run: [EmuTOS](https://emutos.sourceforge.io) (free TOS replacement) is bundled; any original
   192 KB or 256 KB TOS works too, and picking another TOS from the menu reloads it
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
 * Two **ACSI hard disks** (`.hd` / `.img` images, read and write): EmuTOS mounts them as C:, D: … directly
-* **MIDI IN/OUT on the link port** (31,250 baud): MIDI IN works with Analogue's *Pocket MIDI IN* cable
+* **MIDI IN/OUT or RS-232 serial on the link port**: MIDI IN works with Analogue's *Pocket MIDI IN* cable;
+  two Pockets on a link cable play **MIDI Maze** or null-modem games
+* **Cartridge port** (`.stc` ROM images) and the **Cubase 2/3 dongle**
 * **4-player adapter** (parallel port, Gauntlet II style) using Dock controllers 3 and 4, and the STE joypad ports
 * Colour (low/medium res, PAL and NTSC, borders on or off) and monochrome 640×400
 * YM2149 + STE DMA sound, Blitter
@@ -79,7 +81,7 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 |--------------------|--------------------------------------|----------------------------------------------------------|
 | Reset ST (warm)    | –                                    | like the reset button on a real ST                       |
 | Cold Restart       | –                                    | clears memory, reloads TOS, restarts from scratch        |
-| Machine            | ST / STE / Mega STE                  | cold restart; STE needs a 256 KB TOS (the default is)    |
+| Machine            | ST / STE / Mega STE / STE Turbo      | cold restart; STE models need a 256 KB TOS (the default is); STE Turbo is not a real Atari model |
 | Memory             | 512 KB … 14 MB (1 MB default)        | cold restart; original TOS sees at most 4 MB, 8/14 MB are EmuTOS only |
 | Monitor            | Colour / Mono (SM124)                | cold restart; mono is 640×400 high-res software only     |
 | Blitter (ST only)  | Off / On                             | the STE and Mega STE always have one                     |
@@ -91,7 +93,9 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 | Reset All Settings | –                                    | every setting back to its default, then a cold restart   |
 | STE Joypad Ports   | –                                    | switches pads 1/2 between the ST joystick ports and the STE enhanced ports (same as F11 on MiST/MiSTer) |
 | TOS / Floppy A / B | file picker                          | a new TOS reloads and restarts; disks swap live          |
-| Link Port MIDI     | Off / On                             | the link port carries MIDI IN (pin 3, SI) and OUT (pin 2, SO); leave Off for other link devices |
+| Link Port          | Off / MIDI / Serial                  | the link port carries MIDI or the RS-232 port: IN on pin 3 (SI), OUT on pin 2 (SO); leave Off for other link devices |
+| Cubase Dongle      | Off / On                             | the copy-protection key Cubase 2 / 3 look for on the cartridge port |
+| Cartridge          | file picker                          | `.stc` cartridge ROM (up to 128 KB) at $FA0000; picking one cold-restarts |
 | Hard Disk 0 / 1    | file picker                          | ACSI images (`.hd`, `.img`); *Cold Restart* to boot from a new one |
 
 Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at the next start.
@@ -112,6 +116,7 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | **Hard disk not seen** | EmuTOS reads FAT16 partitions (MBR or Atari partition table) by itself. With original Atari TOS, the disk needs a driver on it (AHDI, HDDriver, ICD). Choose *Cold Restart* after picking a new image. |
 | **A disk is not seen** | Only raw `.st` images work; convert `.msa` / `.stx` first (e.g. Hatari's `hmsa`). Load it in *Floppy A* and choose *Cold Restart* to boot from it. |
 | **A game cannot save** | Floppies are write-protected by default: set *Write Protect* to *None* (keep a backup of the disk). |
+| **Want a CRT or LCD look** | In the Pocket's *Display Mode* menu (Analogue button → Settings → Display), pick *CRT Trinitron*, *Backlit / Reflective Color LCD* or *Grayscale LCD*. |
 | **Mono mode: picture off-centre or black** | Mono timing is not yet verified on hardware; switch *Monitor* back to *Colour*. |
 
 When reporting a problem, please say which version (`version` in `Cores/defgenx.AtariST/core.json`), the
@@ -153,9 +158,8 @@ make -C sim           # needs Icarus Verilog and Verilator
 * Only lightly tested on hardware: Dock keyboard/mouse and floppy writing in particular need confirming.
 * Mono and medium-res horizontal positions are estimated ([docs/video.md](docs/video.md)).
 * No Atari Falcon: it needs about twice the Pocket's FPGA.
-* The RTC is set once at boot and does not tick.
-* No RS-232 serial or printer, Viking hi-res, `.msa`/`.stx` images.
-* MIDI is untested on hardware.
+* No printer port (its pins carry the 4-player adapter), Viking hi-res, `.msa`/`.stx` images.
+* MIDI, serial and the cartridge port are untested on hardware.
 
 ## Documentation
 

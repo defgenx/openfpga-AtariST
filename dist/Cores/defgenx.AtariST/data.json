@@ -66,6 +66,20 @@
           "hdf"
         ],
         "size_maximum": "0xFFFFFE00"
+      },
+      {
+        "name": "Cartridge",
+        "id": 5,
+        "required": false,
+        "parameters": "0x001",
+        "deferload": true,
+        "extensions": [
+          "stc",
+          "img",
+          "rom",
+          "bin"
+        ],
+        "size_maximum": "0x20004"
       }
     ]
   }

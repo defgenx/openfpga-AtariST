@@ -251,10 +251,10 @@ assign cart_tran_pin31 = 1'bz;      // input
 assign cart_tran_pin31_dir = 1'b0;  // input
 
 // link port is unused, set to input only to be safe
-// SO / SI carry MIDI OUT / IN (31250 baud, 3.3 V) when "Link Port MIDI" is on;
+// SO / SI carry MIDI OUT / IN (31250 baud) or the RS-232 port's TX / RX (3.3 V levels);
 // otherwise the port is left as inputs. SC and SD stay inputs.
-assign port_tran_so = link_midi_74 ? midi_tx_74 : 1'bz;
-assign port_tran_so_dir = link_midi_74;
+assign port_tran_so = link_on_74 ? link_tx_74 : 1'bz;
+assign port_tran_so_dir = link_on_74;
 assign port_tran_si = 1'bz;
 assign port_tran_si_dir = 1'b0;
 assign port_tran_sck = 1'bz;
@@ -522,7 +522,8 @@ reg        cfg_borders  = 1'b1;
 reg  [1:0] cfg_padmode  = 2'd1;  // 0 joystick, 1 mouse, 2 keys
 reg  [1:0] cfg_mouse_spd = 2'd1; // 0 slow, 1 normal, 2 fast (D-pad mouse)
 reg        cfg_stepad_t = 1'b0;  // toggles on "STE Joypad Ports"
-reg        cfg_linkmidi = 1'b0;  // MIDI on the link port
+reg  [1:0] cfg_linkmode = 2'd0;  // link port: 0 off, 1 MIDI, 2 serial (RS-232 at 3.3 V)
+reg        cfg_cubase   = 1'b0;  // Cubase 2/3 dongle on the cartridge port
 
 always @(posedge clk_74a) begin
 	if (bridge_wr && bridge_addr[31:8] == 24'h800000) begin
@@ -538,12 +539,13 @@ always @(posedge clk_74a) begin
 		8'h20: cfg_padmode  <= bridge_wr_data[1:0];
 		8'h30: cfg_mouse_spd <= bridge_wr_data[1:0];
 		8'h34: cfg_stepad_t  <= ~cfg_stepad_t;
-		8'h38: cfg_linkmidi  <= bridge_wr_data[0];
+		8'h38: cfg_linkmode  <= bridge_wr_data[1:0];
+		8'h3C: cfg_cubase    <= bridge_wr_data[0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
 			cfg_model <= 2'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
 			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmode <= 2'd1;
-			cfg_mouse_spd <= 2'd1; cfg_cold_t <= ~cfg_cold_t;
+			cfg_mouse_spd <= 2'd1; cfg_linkmode <= 2'd0; cfg_cubase <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
 		end
 		default: ;
 		endcase
@@ -558,17 +560,21 @@ always @(posedge clk_74a) begin
 	8'h1C: cfg_bridge_rd_data <= cfg_borders;
 	8'h20: cfg_bridge_rd_data <= cfg_padmode;
 	8'h30: cfg_bridge_rd_data <= cfg_mouse_spd;
-	8'h38: cfg_bridge_rd_data <= cfg_linkmidi;
+	8'h38: cfg_bridge_rd_data <= cfg_linkmode;
+	8'h3C: cfg_bridge_rd_data <= cfg_cubase;
 	default: cfg_bridge_rd_data <= 0;
 	endcase
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [19:0] cfg_s;
-synch_3 #(.WIDTH(20)) s_cfg(
-	{cfg_linkmidi, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
+wire [21:0] cfg_s;
+synch_3 #(.WIDTH(22)) s_cfg(
+	{cfg_cubase, cfg_linkmode, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
 	cfg_s, clk_32);
-wire       linkmidi_32  = cfg_s[19];
+wire       cubase_32    = cfg_s[21];
+wire [1:0] linkmode_32  = cfg_s[20:19];
+wire       linkmidi_32  = linkmode_32 == 2'd1;
+wire       linkser_32   = linkmode_32 == 2'd2;
 wire       stepad_t_32  = cfg_s[18];
 wire [1:0] mouse_spd_32 = cfg_s[17:16];
 wire       cold_t_32    = cfg_s[15];
@@ -614,13 +620,13 @@ wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0);
 
 wire [31:0] system_ctrl = {
 	1'b0,               // 31
-	1'b0,               // 30 cubase dongle
+	cubase_32,          // 30 cubase dongle
 	1'b0,               // 29 blend
 	1'b0,               // 28 viking
 	2'b00,              // 27:26 usb redirection
 	1'b0,               // 25 ethernec
-	model_32 == 2'd2,   // 24 Mega STE
-	model_32 == 2'd1,   // 23 STE
+	model_32[1],        // 24 Mega STE (2) / STEroids (3)
+	model_32[0],        // 23 STE (1) / STEroids (3): both bits = MiSTery's 16 MHz turbo STE
 	stereo_32,          // 22 PSG stereo
 	2'b00,              // 21:20 scanlines
 	blitter_32,         // 19 blitter (always on for STE)
@@ -936,12 +942,47 @@ hid_ps2 hid (
 /* ---------------------------------- RTC --------------------------------------- */
 /* ------------------------------------------------------------------------------ */
 // MiSTery format (BCD): [7:0] sec [15:8] min [23:16] hour [31:24] day
-// [39:32] month [47:40] year (00-99) [55:48] weekday. Captured once at boot.
+// [39:32] month [47:40] year (00-99) [55:48] weekday.
 
-reg [63:0] rtc_74;
-always @(posedge clk_74a)
-	if (rtc_valid) rtc_74 <= {8'h00, 8'h00, rtc_date_bcd[23:16], rtc_date_bcd[15:8], rtc_date_bcd[7:0],
-	                          rtc_time_bcd[23:16], rtc_time_bcd[15:8], rtc_time_bcd[7:0]};
+// BCD clock, set from the Pocket's RTC at boot and advanced every second
+reg [63:0] rtc_74 = 64'd0;
+reg [26:0] rtc_div = 27'd0;
+function [7:0] bcd_inc(input [7:0] v); bcd_inc = (v[3:0] == 4'd9) ? {v[7:4] + 4'd1, 4'd0} : v + 8'd1; endfunction
+function [7:0] month_days(input [7:0] month, input [7:0] year);   // BCD in, BCD out
+	case (month)
+		8'h04, 8'h06, 8'h09, 8'h11: month_days = 8'h30;
+		8'h02: month_days = (({4'd0, year[7:4]} * 8'd10 + {4'd0, year[3:0]}) % 8'd4 == 0) ? 8'h29 : 8'h28;
+		default: month_days = 8'h31;
+	endcase
+endfunction
+always @(posedge clk_74a) begin
+	rtc_div <= rtc_div + 27'd1;
+	if (rtc_valid) begin
+		rtc_74 <= {8'h00, 8'h00, rtc_date_bcd[23:16], rtc_date_bcd[15:8], rtc_date_bcd[7:0],
+		           rtc_time_bcd[23:16], rtc_time_bcd[15:8], rtc_time_bcd[7:0]};
+		rtc_div <= 27'd0;
+	end else if (rtc_div == 27'd74_249_999) begin
+		rtc_div <= 27'd0;
+		if (rtc_74[7:0] != 8'h59) rtc_74[7:0] <= bcd_inc(rtc_74[7:0]);
+		else begin
+			rtc_74[7:0] <= 8'h00;
+			if (rtc_74[15:8] != 8'h59) rtc_74[15:8] <= bcd_inc(rtc_74[15:8]);
+			else begin
+				rtc_74[15:8] <= 8'h00;
+				if (rtc_74[23:16] != 8'h23) rtc_74[23:16] <= bcd_inc(rtc_74[23:16]);
+				else begin
+					rtc_74[23:16] <= 8'h00;
+					if (rtc_74[31:24] != month_days(rtc_74[39:32], rtc_74[47:40])) rtc_74[31:24] <= bcd_inc(rtc_74[31:24]);
+					else begin
+						rtc_74[31:24] <= 8'h01;
+						if (rtc_74[39:32] != 8'h12) rtc_74[39:32] <= bcd_inc(rtc_74[39:32]);
+						else begin rtc_74[39:32] <= 8'h01; rtc_74[47:40] <= bcd_inc(rtc_74[47:40]); end
+					end
+				end
+			end
+		end
+	end
+end
 wire [63:0] rtc;
 synch_3 #(.WIDTH(64)) s_rtc(rtc_74, rtc, clk_32);
 
@@ -959,16 +1000,18 @@ wire [14:0] audio_mix_l, audio_mix_r;
 /* ------------------------------------------------------------------------------ */
 // The ST's MIDI ACIA runs at 31250 baud, the rate Analogue's link-port MIDI cable
 // carries. MIDI IN: link SI -> ACIA RX. MIDI OUT: ACIA TX -> link SO.
-wire midi_tx;
+// Serial: the MFP's real UART (serial_redirect off), baud set by TOS/software.
+wire midi_tx, uart_tx;
 reg  [2:0] link_si_s = 3'b111;
 always @(posedge clk_32) link_si_s <= {link_si_s[1:0], port_tran_si};
 wire midi_rx = linkmidi_32 ? link_si_s[2] : 1'b1;
+wire uart_rx = linkser_32  ? link_si_s[2] : 1'b1;
 
 // the pad drivers live in the clk_74a-facing top level; keep their inputs registered
-reg  link_midi_74 = 1'b0, midi_tx_74 = 1'b1;
+reg  link_on_74 = 1'b0, link_tx_74 = 1'b1;
 always @(posedge clk_74a) begin
-	link_midi_74 <= cfg_linkmidi;
-	midi_tx_74   <= midi_tx;
+	link_on_74 <= cfg_linkmode == 2'd1 || cfg_linkmode == 2'd2;
+	link_tx_74 <= cfg_linkmode == 2'd2 ? uart_tx : midi_tx;
 end
 
 atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had one
@@ -1013,7 +1056,7 @@ atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had on
 	.parallel_out        ( ),
 	.parallel_printer_busy ( joy2[4] ),
 
-	.serial_redirect     ( 1'b1 ),
+	.serial_redirect     ( ~linkser_32 ),
 	.serial_data_out_available ( ),
 	.serial_strobe_out   ( 1'b0 ),
 	.serial_data_out     ( ),
@@ -1022,8 +1065,8 @@ atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had on
 	.serial_data_in      ( 8'h00 ),
 	.uart_ctsb           ( 1'b0 ),
 	.uart_rtsb           ( ),
-	.uart_rx             ( 1'b1 ),
-	.uart_tx             ( ),
+	.uart_rx             ( uart_rx ),
+	.uart_tx             ( uart_tx ),
 
 	.data_in_strobe_rom  ( data_in_strobe ),
 	.data_in_strobe_acsi ( dio_in_t ),

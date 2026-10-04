@@ -31,7 +31,7 @@ Pocket mechanism:
 | `system_ctrl` from the OSD                  | `interact.json` registers at `0x8000_00xx`                     |
 | PS/2 keyboard/mouse                         | Dock HID reports (players 3/4) re-encoded as PS/2 by `hid_ps2` |
 | USB joysticks                               | Pocket pads 1 and 2                                            |
-| RTC                                         | APF RTC (0x0090) captured at boot                              |
+| RTC                                         | APF RTC (0x0090) at boot, then a BCD clock ticking every second |
 
 ## Media: why everything is deferload
 
@@ -87,7 +87,7 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | Address       | Setting        | Values                                   |
 |---------------|----------------|------------------------------------------|
 | `0x80000000`  | Reset ST (warm) | any write                               |
-| `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE                  |
+| `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo (STEroids) |
 | `0x80000008`  | Memory         | 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M    |
 | `0x8000000C`  | Monitor        | 0 colour, 1 mono                         |
 | `0x80000010`  | Blitter (ST)   | 0/1 (the STE always has one)             |
@@ -97,7 +97,8 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x80000020`  | Pad mode       | 0 joystick, 1 mouse (default), 2 keys    |
 | `0x80000030`  | Mouse speed    | 0 slow, 1 normal, 2 fast                 |
 | `0x80000034`  | STE Joypad Ports | any write: presses F11 (IKBD port switch) |
-| `0x80000038`  | Link Port MIDI | 0 off, 1 on                              |
+| `0x80000038`  | Link port      | 0 off, 1 MIDI, 2 serial                  |
+| `0x8000003C`  | Cubase dongle  | 0 off, 1 on                              |
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
 
@@ -118,8 +119,15 @@ floppy path but a separate `hd_ack`. `sim/system` boots EmuTOS with a FAT16 imag
 Serial/printer redirection, Ethernec, Cubase dongles and the Viking card are tied off in `core_top.v`:
 the Pocket has no port for the first ones, and its scaler cannot take Viking's 1280×1024.
 
-## MIDI
+## Link port: MIDI and serial
 
-With *Link Port MIDI* on, the MIDI ACIA's TX drives link port SO and SI feeds its RX (synchronised to
-`clk_32`); MIDI's 31,250 baud is the ACIA's native rate. Analogue's Nanoloop *MIDI IN* cable delivers
-MIDI to the Pocket on this port. Off, SO is tri-stated and RX idles high.
+*Link Port* = MIDI routes the MIDI ACIA (31,250 baud, its native rate) to link SO/SI; = Serial routes the
+MFP's UART instead (`serial_redirect` off, so MiSTery uses its real UART at the baud software sets). SI is
+synchronised to `clk_32`. Off, SO is tri-stated and both RX lines idle high. A Game Boy link cable crosses
+SO/SI, which makes two Pockets a MIDI ring (MIDI Maze) or a null-modem pair.
+
+## Cartridge
+
+Data slot 5 is loaded after TOS by the same loader, at word `$7D0000` (byte `$FA0000`), where MiSTery's
+`rom3`/`rom4` decode reads it; a 131,076-byte file has Hatari's 4-byte header skipped. Picking a
+cartridge re-runs the boot sequence (low-RAM clear, TOS, cartridge).

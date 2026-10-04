@@ -76,6 +76,7 @@ localparam [15:0] SLOT_FDD_A = 16'd1;
 localparam [15:0] SLOT_FDD_B = 16'd2;
 localparam [15:0] SLOT_HDD_0 = 16'd3;
 localparam [15:0] SLOT_HDD_1 = 16'd4;
+localparam [15:0] SLOT_CART  = 16'd5;
 
 localparam [31:0] RBUF_ADDR = 32'h1000_0000;
 localparam [31:0] WBUF_ADDR = 32'h1000_2000;
@@ -130,7 +131,8 @@ always @(posedge clk_74a)
 reg        boot_ready_74;       // datatable has been scanned
 reg [31:0] size_74[2];
 reg  [1:0] mount_t_74;          // toggles when a new image is available
-reg        tos_t_74;            // toggles when a new TOS is picked from the menu
+reg        tos_t_74;            // toggles when a new TOS (or cartridge) is picked from the menu
+reg [31:0] cart_size_74;        // bytes, 0 = no cartridge
 
 // Datatable layout: two words per slot, {id} then {size}.
 // mf_datatable registers address and output: q is valid 2 clocks after the address.
@@ -159,6 +161,7 @@ always @(posedge clk_74a) begin
 				if (dt_id == SLOT_FDD_B && datatable_q != 0) begin size_74[1] <= datatable_q; mount_t_74[1] <= ~mount_t_74[1]; end
 				if (dt_id == SLOT_HDD_0) hd_size0 <= datatable_q;
 				if (dt_id == SLOT_HDD_1) hd_size1 <= datatable_q;
+				if (dt_id == SLOT_CART)  cart_size_74 <= datatable_q;
 				dt_idx <= dt_idx + 6'd1;
 				if (dt_idx == 6'd31) begin
 					dt_scanning <= 1'b0;
@@ -176,6 +179,7 @@ always @(posedge clk_74a) begin
 		if (dataslot_update_id == SLOT_FDD_B) begin size_74[1] <= dataslot_update_size; mount_t_74[1] <= ~mount_t_74[1]; end
 		if (dataslot_update_id == SLOT_HDD_0) hd_size0 <= dataslot_update_size;
 		if (dataslot_update_id == SLOT_HDD_1) hd_size1 <= dataslot_update_size;
+		if (dataslot_update_id == SLOT_CART)  begin cart_size_74 <= dataslot_update_size; tos_t_74 <= ~tos_t_74; end
 	end
 end
 
@@ -257,6 +261,8 @@ reg  [4:0] state;
 reg  [5:0] tos_chunk;
 reg  [6:0] tos_chunks;
 reg [23:1] tos_base;
+reg        loading_cart;        // second pass of the loader: cartridge ROM at $FA0000
+reg  [2:0] cart_skip;           // header bytes skipped (Hatari .stc files may carry 4)
 reg [10:0] word_idx;
 reg  [5:0] pace;
 reg  [2:0] hdr_cnt;
@@ -278,6 +284,7 @@ initial begin
 	dt_scanning = 1'b0;
 	mount_t_74 = 2'b00;
 	tos_t_74 = 1'b0;
+	cart_size_74 = 32'd0;
 	tos_seen = 1'b0;
 	tos_pending = 1'b0;
 	mount_seen = 2'b00;
@@ -292,6 +299,7 @@ initial begin
 	tos_done = 1'b0;
 end
 
+wire [31:0] cart_size_s = cart_size_74;   // quasi-static: only changes before the reload it triggers
 wire [31:0] size_a = size_74[0];   // stable: only changes before its mount toggle crosses
 wire [31:0] size_b = size_74[1];
 
@@ -309,6 +317,8 @@ always @(posedge clk_32) begin
 		tos_done <= 1'b0;
 		data_download <= 1'b0;
 		if (boot_s[2]) begin
+			loading_cart <= 1'b0;
+			cart_skip <= 3'd0;
 			tos_chunk <= 6'd0;
 			tos_chunks <= 7'd1; // refined once the header is parsed
 			data_download <= 1'b1;
@@ -336,8 +346,8 @@ always @(posedge clk_32) begin
 	// ---------------- TOS: 4 KB chunks into ST ROM space ----------------
 	S_TOS_REQ: if (!req_busy) begin
 		req_write      <= 1'b0;
-		req_slot       <= SLOT_TOS;
-		req_offset     <= {14'd0, tos_chunk, 12'd0};
+		req_slot       <= loading_cart ? SLOT_CART : SLOT_TOS;
+		req_offset     <= {14'd0, tos_chunk, 12'd0} + {29'd0, cart_skip};
 		req_length     <= 32'd4096;
 		req_bridgeaddr <= RBUF_ADDR;
 		req_t          <= ~req_t;
@@ -348,7 +358,7 @@ always @(posedge clk_32) begin
 		word_idx <= 11'd0;
 		hdr_cnt <= 3'd0;
 		rbuf_raddr <= 12'd9;
-		state <= (tos_chunk == 0) ? S_TOS_HDR : S_TOS_HI;
+		state <= (tos_chunk == 0 && !loading_cart) ? S_TOS_HDR : S_TOS_HI;
 	end
 
 	// os_base (long at offset 8) tells 192 KB TOS at $FC0000 from 256 KB TOS at $E00000
@@ -387,10 +397,20 @@ always @(posedge clk_32) begin
 			word_idx <= word_idx + 11'd1;
 			if (word_idx == 11'd2047) begin
 				tos_chunk <= tos_chunk + 6'd1;
-				state <= ({1'b0, tos_chunk} + 7'd1 == tos_chunks) ? S_IDLE : S_TOS_REQ;
+				state <= S_TOS_REQ;
 				if ({1'b0, tos_chunk} + 7'd1 == tos_chunks) begin
-					data_download <= 1'b0;
-					tos_done <= 1'b1;
+					if (!loading_cart && cart_size_s != 0) begin
+						// then the cartridge: up to 128 KB at $FA0000 (word $7D0000)
+						loading_cart <= 1'b1;
+						cart_skip <= (cart_size_s == 32'd131076) ? 3'd4 : 3'd0;
+						tos_base <= 23'h7D0000;
+						tos_chunk <= 6'd0;
+						tos_chunks <= (cart_size_s >= 32'd131072) ? 7'd32 : {2'd0, cart_size_s[16:12]} + {6'd0, |cart_size_s[11:0]};
+					end else begin
+						data_download <= 1'b0;
+						tos_done <= 1'b1;
+						state <= S_IDLE;
+					end
 				end
 			end else
 				state <= S_TOS_HI;
