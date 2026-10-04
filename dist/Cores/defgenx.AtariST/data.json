@@ -1,0 +1,35 @@
+{
+  "data": {
+    "magic": "APF_VER_1",
+    "data_slots": [
+      {
+        "name": "TOS",
+        "id": 0,
+        "required": true,
+        "parameters": "0x001",
+        "deferload": true,
+        "filename": "tos.img",
+        "extensions": ["img", "rom", "bin", "tos"],
+        "size_maximum": "0x40000"
+      },
+      {
+        "name": "Floppy A",
+        "id": 1,
+        "required": false,
+        "parameters": "0x001",
+        "deferload": true,
+        "extensions": ["st"],
+        "size_maximum": "0x2D0000"
+      },
+      {
+        "name": "Floppy B",
+        "id": 2,
+        "required": false,
+        "parameters": "0x001",
+        "deferload": true,
+        "extensions": ["st"],
+        "size_maximum": "0x2D0000"
+      }
+    ]
+  }
+}

@@ -1,0 +1,3 @@
+[submodule "src/fpga/MiSTery"]
+	path = src/fpga/MiSTery
+	url = https://github.com/gyurco/MiSTery.git

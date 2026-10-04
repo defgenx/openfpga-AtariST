@@ -1,0 +1,215 @@
+{
+  "interact": {
+    "magic": "APF_VER_1",
+    "variables": [
+      {
+        "name": "Reset ST",
+        "id": 1,
+        "type": "action",
+        "enabled": true,
+        "address": "0x80000000",
+        "value": 1
+      },
+      {
+        "name": "Machine",
+        "id": 2,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000004",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "ST"
+          },
+          {
+            "value": 1,
+            "name": "STE"
+          },
+          {
+            "value": 2,
+            "name": "Mega STE"
+          }
+        ]
+      },
+      {
+        "name": "Memory",
+        "id": 3,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000008",
+        "defaultval": 1,
+        "options": [
+          {
+            "value": 0,
+            "name": "512 KB"
+          },
+          {
+            "value": 1,
+            "name": "1 MB"
+          },
+          {
+            "value": 2,
+            "name": "2 MB"
+          },
+          {
+            "value": 3,
+            "name": "4 MB"
+          },
+          {
+            "value": 4,
+            "name": "8 MB"
+          },
+          {
+            "value": 5,
+            "name": "14 MB"
+          }
+        ]
+      },
+      {
+        "name": "CPU",
+        "id": 4,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000024",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "68000"
+          },
+          {
+            "value": 1,
+            "name": "68020"
+          }
+        ]
+      },
+      {
+        "name": "Monitor",
+        "id": 5,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x8000000C",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "Colour"
+          },
+          {
+            "value": 1,
+            "name": "Mono (SM124)"
+          }
+        ]
+      },
+      {
+        "name": "Blitter (ST)",
+        "id": 6,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000010",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "Off"
+          },
+          {
+            "value": 1,
+            "name": "On"
+          }
+        ]
+      },
+      {
+        "name": "YM Stereo",
+        "id": 7,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000014",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "Off"
+          },
+          {
+            "value": 1,
+            "name": "On"
+          }
+        ]
+      },
+      {
+        "name": "Write Protect",
+        "id": 8,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000018",
+        "defaultval": 3,
+        "options": [
+          {
+            "value": 3,
+            "name": "A and B"
+          },
+          {
+            "value": 2,
+            "name": "B only"
+          },
+          {
+            "value": 1,
+            "name": "A only"
+          },
+          {
+            "value": 0,
+            "name": "None"
+          }
+        ]
+      },
+      {
+        "name": "Borders",
+        "id": 9,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x8000001C",
+        "defaultval": 1,
+        "options": [
+          {
+            "value": 1,
+            "name": "Show"
+          },
+          {
+            "value": 0,
+            "name": "Hide"
+          }
+        ]
+      },
+      {
+        "name": "Pad Mode",
+        "id": 10,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000020",
+        "defaultval": 0,
+        "options": [
+          {
+            "value": 0,
+            "name": "Joystick"
+          },
+          {
+            "value": 1,
+            "name": "Mouse"
+          }
+        ]
+      }
+    ],
+    "messages": []
+  }
+}

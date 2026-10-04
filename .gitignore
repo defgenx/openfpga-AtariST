@@ -1,0 +1,5 @@
+release/
+*.zip
+dist/Cores/*/atarist.rbf_r
+sim/*.vvp
+sim/obj_*

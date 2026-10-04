@@ -1,0 +1,199 @@
+// st_media testbench: models APF target commands and the FDC sector interface.
+// Run: make -C sim media
+`timescale 1ns/1ps
+
+module st_media_tb;
+
+reg clk_74a = 0, clk_32 = 0;
+always #6.734 clk_74a = ~clk_74a;
+always #15.58 clk_32 = ~clk_32;
+
+// ---------------- files ----------------
+`ifdef TOS256
+localparam TOS_SIZE = 262144;
+localparam [23:0] TOS_BASE = 24'hE00000;
+`else
+localparam TOS_SIZE = 196608;
+localparam [23:0] TOS_BASE = 24'hFC0000;
+`endif
+localparam FDA_SIZE = 737280;
+reg [7:0] tos [0:TOS_SIZE-1];
+reg [7:0] fda [0:FDA_SIZE-1];
+integer i;
+initial begin
+	for (i = 0; i < TOS_SIZE; i = i + 1) tos[i] = (i * 7 + (i >> 8)) & 8'hff;
+	{tos[8], tos[9], tos[10], tos[11]} = {8'h00, TOS_BASE};   // os_base
+	for (i = 0; i < FDA_SIZE; i = i + 1) fda[i] = (i * 13 + (i >> 9)) & 8'hff;
+end
+
+// ---------------- DUT ----------------
+reg  [31:0] bridge_addr = 0;
+reg         bridge_wr = 0;
+reg  [31:0] bridge_wr_data = 0;
+wire [31:0] bridge_rd_data;
+wire        t_read, t_write;
+wire [15:0] t_id;
+wire [31:0] t_off, t_baddr, t_len;
+reg         t_done = 0;
+reg         ds_update = 0;
+reg  [15:0] ds_update_id = 0;
+reg  [31:0] ds_update_size = 0;
+reg         allcomplete = 0;
+wire  [9:0] dt_addr;
+reg  [31:0] dt_q;
+
+wire        tos_done, data_download, data_in_strobe;
+wire [23:1] data_addr;
+wire [15:0] data_in_reg;
+wire  [1:0] img_mounted;
+wire [31:0] img_size;
+reg  [31:0] sd_lba = 0;
+reg   [1:0] sd_rd = 0, sd_wr = 0;
+wire        sd_ack, sd_dout_strobe;
+wire  [8:0] sd_buff_addr;
+wire  [7:0] sd_dout;
+reg   [7:0] sd_din;
+
+st_media dut (
+	.clk_74a(clk_74a), .clk_32(clk_32),
+	.bridge_addr(bridge_addr), .bridge_wr(bridge_wr), .bridge_wr_data(bridge_wr_data), .bridge_rd_data(bridge_rd_data),
+	.target_dataslot_read(t_read), .target_dataslot_write(t_write), .target_dataslot_id(t_id),
+	.target_dataslot_slotoffset(t_off), .target_dataslot_bridgeaddr(t_baddr), .target_dataslot_length(t_len),
+	.target_dataslot_done(t_done),
+	.dataslot_update(ds_update), .dataslot_update_id(ds_update_id), .dataslot_update_size(ds_update_size),
+	.dataslot_allcomplete(allcomplete), .datatable_addr(dt_addr), .datatable_q(dt_q),
+	.tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
+	.img_mounted(img_mounted), .img_size(img_size), .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
+	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din)
+);
+
+// ---------------- APF datatable: 2-cycle registered read ----------------
+reg [31:0] dt_mem [0:255];
+reg [31:0] dt_q1;
+initial begin
+	for (i = 0; i < 256; i = i + 1) dt_mem[i] = 0;
+	dt_mem[0] = 0; dt_mem[1] = TOS_SIZE;
+	dt_mem[2] = 1; dt_mem[3] = FDA_SIZE;
+	dt_mem[4] = 2; dt_mem[5] = 0;
+end
+always @(posedge clk_74a) begin dt_q1 <= dt_mem[dt_addr]; dt_q <= dt_q1; end
+
+// ---------------- APF target command model ----------------
+reg t_read_d = 0, t_write_d = 0;
+reg op_read;
+integer w, base;
+reg [31:0] word;
+always @(posedge clk_74a) begin t_read_d <= t_read; t_write_d <= t_write; end
+
+task apf_cycle; @(posedge clk_74a); endtask
+
+initial begin : apf
+	forever begin
+		@(posedge clk_74a);
+		if ((t_read & ~t_read_d) | (t_write & ~t_write_d)) begin
+			op_read = t_read;
+			// bridge clears done when it starts the command
+			repeat (3) apf_cycle; t_done <= 0;
+			repeat (40) apf_cycle;
+			if (op_read) begin
+				for (w = 0; w < t_len / 4; w = w + 1) begin
+					base = t_off + w * 4;
+					if (t_id == 0) word = {tos[base], tos[base+1], tos[base+2], tos[base+3]};
+					else           word = {fda[base], fda[base+1], fda[base+2], fda[base+3]};
+					bridge_addr <= t_baddr + w * 4; bridge_wr_data <= word; bridge_wr <= 1;
+					apf_cycle; bridge_wr <= 0;
+					repeat (2) apf_cycle;    // APF writes are not back to back
+				end
+			end else begin
+				for (w = 0; w < t_len / 4; w = w + 1) begin
+					bridge_addr <= t_baddr + w * 4;
+					repeat (3) apf_cycle;
+					base = t_off + w * 4;
+					{fda[base], fda[base+1], fda[base+2], fda[base+3]} = bridge_rd_data;
+				end
+			end
+			repeat (20) apf_cycle;
+			t_done <= 1;
+		end
+	end
+end
+
+// ---------------- FDC buffer model (registered read, like fdc1772_dpram) ----------------
+reg [7:0] fdc_buf [0:511];
+always @(posedge clk_32) begin
+	if (sd_dout_strobe & sd_ack) fdc_buf[sd_buff_addr] <= sd_dout;
+	sd_din <= fdc_buf[sd_buff_addr];
+end
+// sd_rd/sd_wr are cleared by the FDC once sd_ack rises
+always @(posedge clk_32) if (sd_ack) begin sd_rd <= 0; sd_wr <= 0; end
+
+// ---------------- checks ----------------
+integer errors = 0;
+integer words_seen = 0;
+reg strobe_d = 0;
+reg [23:0] exp_byte_addr;
+always @(posedge clk_32) begin
+	strobe_d <= data_in_strobe;
+	if (data_in_strobe != strobe_d) begin
+		exp_byte_addr = TOS_BASE + words_seen * 2;
+		if ({data_addr, 1'b0} != exp_byte_addr || data_in_reg != {tos[words_seen*2], tos[words_seen*2+1]}) begin
+			if (errors < 10) $display("TOS mismatch word %0d: addr %06x data %04x, expected %06x %02x%02x",
+				words_seen, {data_addr, 1'b0}, data_in_reg, exp_byte_addr, tos[words_seen*2], tos[words_seen*2+1]);
+			errors = errors + 1;
+		end
+		if (!data_download) begin $display("strobe outside download"); errors = errors + 1; end
+		words_seen = words_seen + 1;
+	end
+end
+
+reg mounted_a = 0;
+always @(posedge clk_32) if (img_mounted[0] && !mounted_a) begin
+	if (img_size != FDA_SIZE) begin $display("mount size %0d", img_size); errors = errors + 1; end
+	mounted_a = 1;
+end
+
+integer k;
+initial begin
+	repeat (50) @(posedge clk_74a);
+	allcomplete <= 1; @(posedge clk_74a); allcomplete <= 0;
+
+	wait (tos_done);
+	$display("TOS loaded: %0d words at t=%0t", words_seen, $time);
+	if (words_seen != TOS_SIZE / 2) begin $display("expected %0d words", TOS_SIZE/2); errors = errors + 1; end
+	repeat (100) @(posedge clk_32);
+	if (!mounted_a) begin $display("drive A not mounted"); errors = errors + 1; end
+
+	// sector read, drive A, LBA 5
+	@(posedge clk_32); sd_lba <= 5; sd_rd <= 2'b01;
+	wait (sd_ack); wait (!sd_ack);
+	for (k = 0; k < 512; k = k + 1) if (fdc_buf[k] !== fda[5*512 + k]) begin
+		if (errors < 10) $display("read mismatch byte %0d: %02x expected %02x", k, fdc_buf[k], fda[5*512+k]);
+		errors = errors + 1;
+	end
+	$display("sector read done");
+
+	// sector write, drive A, LBA 7
+	for (k = 0; k < 512; k = k + 1) fdc_buf[k] = 8'hA5 ^ k[7:0];
+	@(posedge clk_32); sd_lba <= 7; sd_wr <= 2'b01;
+	wait (sd_ack); wait (!sd_ack);
+	for (k = 0; k < 512; k = k + 1) if (fda[7*512 + k] !== (8'hA5 ^ k[7:0])) begin
+		if (errors < 10) $display("write mismatch byte %0d: %02x", k, fda[7*512+k]);
+		errors = errors + 1;
+	end
+	if (fda[8*512] !== ((8*512*13 + 8) & 8'hff)) begin $display("write spilled into LBA 8"); errors = errors + 1; end
+	$display("sector write done");
+
+	// disk swap from the Pocket menu
+	@(posedge clk_74a); ds_update_id <= 1; ds_update_size <= 819200; ds_update <= 1;
+	@(posedge clk_74a); ds_update <= 0;
+	wait (img_mounted[0]);
+	if (img_size != 819200) begin $display("remount size %0d", img_size); errors = errors + 1; end
+
+	if (errors == 0) $display("PASS");
+	else $display("FAIL: %0d errors", errors);
+	$finish;
+end
+
+initial begin #2_000_000_000; $display("TIMEOUT"); $finish; end
+
+endmodule
