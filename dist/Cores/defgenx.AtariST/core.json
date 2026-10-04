@@ -2,12 +2,14 @@
   "core": {
     "magic": "APF_VER_1",
     "metadata": {
-      "platform_ids": ["atarist"],
+      "platform_ids": [
+        "atarist"
+      ],
       "shortname": "Atari ST",
-      "description": "Atari ST/STE/Mega STE, ported from the MiSTery core by Gyorgy Szombathelyi.",
+      "description": "Atari ST/STE/Mega STE, port of the MiSTery core",
       "author": "defgenx",
       "url": "https://github.com/defgenx/openfpga-AtariST",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "date_release": "2026-10-04"
     },
     "framework": {

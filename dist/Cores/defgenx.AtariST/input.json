@@ -12,7 +12,7 @@
           },
           {
             "id": 1,
-            "name": "Fire 2 / Right Click",
+            "name": "Fire 2/Right Click",
             "key": "pad_btn_b"
           },
           {
@@ -27,12 +27,12 @@
           },
           {
             "id": 4,
-            "name": "Left Click (mouse mode)",
+            "name": "Mouse Left Click",
             "key": "pad_trig_l"
           },
           {
             "id": 5,
-            "name": "Right Click (mouse mode)",
+            "name": "Mouse Right Click",
             "key": "pad_trig_r"
           },
           {

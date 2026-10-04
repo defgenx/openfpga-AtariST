@@ -21,6 +21,8 @@ compile() {
 package() {
 	local rbf=src/fpga/output_files/ap_core.rbf
 	[ -f "$rbf" ] || { echo "missing $rbf - compile first" >&2; exit 1; }
+	# the Pocket refuses the whole core if any definition file breaks an APF limit
+	python3 tools/check_json.py
 	python3 tools/reverse_bits.py "$rbf" "dist/Cores/$CORE/atarist.rbf_r"
 	rm -rf release && mkdir -p release
 	cp -R dist/Cores dist/Platforms dist/Assets release/
