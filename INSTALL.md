@@ -2,6 +2,21 @@
 
 ## 1. Copy the core to the microSD card
 
+**The easy way:** put the microSD card in your computer and run, from a clone of the repo or on its own
+after downloading `install.sh` from the release (macOS or Linux):
+
+```sh
+./install.sh              # finds the Pocket SD card, asks to confirm, installs, offers to eject
+./install.sh --dry-run    # show what would be copied, change nothing
+./install.sh --sd /Volumes/POCKET   # name the card yourself
+```
+
+It never replaces a file already on the card: existing files (for example a `tos.img` you put there)
+are skipped and listed. To update the core, delete `Cores/defgenx.AtariST/` from the card and run it
+again. Without a built core next to it, the script downloads the newest release from GitHub.
+
+**By hand:**
+
 Take the `defgenx.AtariST.zip` produced by `./build.sh` (or the `release/` folder) and copy its
 contents to the **root** of the Pocket's microSD card, merging with the folders already there:
 
@@ -21,31 +36,29 @@ SD card root
 On macOS, copy the folders with Finder or `ditto`. Don't replace the existing `Assets`, `Cores` or
 `Platforms` folders; merge into them. Eject the card cleanly afterwards.
 
-## 2. Add a TOS ROM (required)
+## 2. TOS (nothing to do)
 
-The ST needs its operating system ROM (TOS), which is copyrighted and not included. Use a dump of your
-own machine's TOS.
+The ST needs its operating system ROM, called TOS. The release already includes **EmuTOS**, a free,
+open-source TOS replacement (GPL, https://emutos.sourceforge.io), in `Assets/atarist/common/`:
 
-1. Copy the image to `Assets/atarist/common/`.
-2. Name it `tos.img` to have it load automatically. Otherwise the Pocket asks you to pick a file the
-   first time you start the core.
+| File                 | Use it for                                                    |
+|----------------------|---------------------------------------------------------------|
+| `tos.img`            | EmuTOS 192 KB, English. Loaded automatically; for *Machine = ST* with the 68000 (the defaults) |
+| `emutos-256k-uk.img` | EmuTOS 256 KB, English. For *STE*, *Mega STE* or the 68020 CPU |
+| `emutos-192k-fr.img` / `emutos-256k-fr.img` | French versions (AZERTY keyboard layout)  |
 
-Accepted: raw TOS images of **192 KB** (TOS 1.00, 1.02, 1.04) or **256 KB** (TOS 1.06, 1.62, 2.06),
-with the extension `.img`, `.rom`, `.bin` or `.tos`. The core reads the ROM header and places it at the
-right address itself.
+To switch, pick the file in *Core Settings → TOS*; the ST resets with it. With no disk inserted, EmuTOS
+boots straight to the GEM desktop.
 
-| Machine setting | TOS that works                         |
-|-----------------|----------------------------------------|
-| ST              | 1.00, 1.02, 1.04, 2.06                 |
-| STE             | 1.06, 1.62, 2.06                       |
-| Mega STE        | 2.05, 2.06                             |
+EmuTOS runs most well-behaved ST software, but some games and demos only work with Atari's original TOS.
+If you have an original TOS dump (192 KB TOS 1.00–1.04 or 256 KB TOS 1.06/1.62/2.06, as `.img`, `.rom`,
+`.bin` or `.tos`), copy it to `Assets/atarist/common/` as `tos.img`, replacing the EmuTOS one:
 
-TOS 1.04 (ST) and TOS 2.06 (any machine) are the most compatible choices. Split dumps (separate
-high/low byte files from the ROM chips) must be merged into one file first. TT and Falcon TOS (3.x, 4.x)
-won't work.
-
-To switch to a different TOS later, use *Core Settings → TOS* in the Pocket menu. The ST resets with
-the new ROM.
+| Machine setting | Original TOS that works |
+|-----------------|-------------------------|
+| ST              | 1.00, 1.02, 1.04, 2.06  |
+| STE             | 1.06, 1.62, 2.06        |
+| Mega STE        | 2.05, 2.06              |
 
 ## 3. Add floppy disks (optional)
 
@@ -94,10 +107,11 @@ Page Down = Undo), and an analog controller's left stick moves the mouse.
 
 ## Troubleshooting
 
-* **Black screen, nothing happens:** the TOS file is missing or not a raw 192/256 KB image. Check that it
-  is in `Assets/atarist/common/` and its size is exactly 196,608 or 262,144 bytes.
-* **Bombs or a crash at boot:** the TOS doesn't match the machine (e.g. TOS 1.06 with *Machine = ST*).
-  See the table in step 2.
+* **Black screen, nothing happens:** `tos.img` is missing from `Assets/atarist/common/` or is not a raw
+  192/256 KB image (exactly 196,608 or 262,144 bytes). Re-copy it from the release zip.
+* **Bombs or a crash at boot:** the TOS doesn't match the machine, e.g. the 192 KB EmuTOS with
+  *Machine = STE* or the 68020 CPU. Use `emutos-256k-uk.img` for those. See step 2.
+* **A game refuses to run:** it may need Atari's original TOS rather than EmuTOS.
 * **Disk not seen:** only `.st` images work; set the disk in *Floppy A* before booting a game that
   needs it, then use *Reset ST*.
 * **Image off-centre in mono mode:** a known gap in this first version, see `docs/video.md`.

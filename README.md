@@ -10,7 +10,8 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 ## Features
 
 * ST, STE and Mega STE (16 MHz) machines, 512 KB – 14 MB RAM, 68000 (FX68K) or 68020 (TG68K)
-* Any 192 KB or 256 KB TOS image; picking another TOS from the menu reloads it
+* Ready to run: [EmuTOS](https://emutos.sourceforge.io) (free TOS replacement) is bundled; any original
+  192 KB or 256 KB TOS works too, and picking another TOS from the menu reloads it
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
 * Colour (low/medium res, PAL and NTSC, borders on or off) and monochrome 640×400
 * YM2149 + STE DMA sound, Blitter
@@ -22,8 +23,10 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
 ## Installing
 
-See **[INSTALL.md](INSTALL.md)**: copying to the microSD card, adding a TOS ROM (192 or 256 KB,
-`.img`/`.rom`/`.bin`/`.tos`) and floppy images, settings, controls and troubleshooting.
+Put the microSD card in your computer and run `./install.sh`: it finds the card and copies the core
+without replacing anything already there. Or unzip the release onto the card by hand. EmuTOS is
+included, so the core boots to the GEM desktop without any other file. See **[INSTALL.md](INSTALL.md)** for disks, original TOS, settings,
+controls and troubleshooting.
 
 ## Controls
 
@@ -82,6 +85,8 @@ make -C sim           # needs Icarus Verilog and Verilator
   `core_bridge_cmd.v`).
 * `sound_i2s.sv` and `sync_fifo.sv` from [analogue-pocket-utils](https://github.com/agg23/analogue-pocket-utils)
   by Adam Gastineau — MIT.
+* [EmuTOS](https://emutos.sourceforge.io) 1.4, bundled unmodified in `dist/Assets/atarist/common/` — GPL v2
+  (source: https://sourceforge.net/projects/emutos/files/emutos/1.4/).
 * On-screen keyboard font: [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper — public domain.
 * Handheld control scheme modelled on [Mazamars312's Pocket Amiga core](https://github.com/Mazamars312/Analogue-Amiga).
 
