@@ -62,7 +62,7 @@ st_media dut (
 	.target_dataslot_done(t_done),
 	.dataslot_update(ds_update), .dataslot_update_id(ds_update_id), .dataslot_update_size(ds_update_size),
 	.dataslot_allcomplete(allcomplete), .datatable_addr(dt_addr), .datatable_q(dt_q),
-	.tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
+	.cold_req(1'b0), .tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
 	.img_mounted(img_mounted), .img_size(img_size), .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din)
 );
@@ -130,11 +130,18 @@ always @(posedge clk_32) if (sd_ack) begin sd_rd <= 0; sd_wr <= 0; end
 // ---------------- checks ----------------
 integer errors = 0;
 integer words_seen = 0;
+integer clear_seen = 0;
 reg strobe_d = 0;
 reg [23:0] exp_byte_addr;
 always @(posedge clk_32) begin
 	strobe_d <= data_in_strobe;
-	if (data_in_strobe != strobe_d) begin
+	if (data_in_strobe != strobe_d && clear_seen < 2048) begin
+		if ({data_addr, 1'b0} != clear_seen * 2 || data_in_reg != 16'h0000) begin
+			$display("clear mismatch word %0d: addr %06x data %04x", clear_seen, {data_addr, 1'b0}, data_in_reg);
+			errors = errors + 1;
+		end
+		clear_seen = clear_seen + 1;
+	end else if (data_in_strobe != strobe_d) begin
 		exp_byte_addr = TOS_BASE + words_seen * 2;
 		if ({data_addr, 1'b0} != exp_byte_addr || data_in_reg != {tos[words_seen*2], tos[words_seen*2+1]}) begin
 			if (errors < 10) $display("TOS mismatch word %0d: addr %06x data %04x, expected %06x %02x%02x",
@@ -158,7 +165,8 @@ initial begin
 	allcomplete <= 1; @(posedge clk_74a); allcomplete <= 0;
 
 	wait (tos_done);
-	$display("TOS loaded: %0d words at t=%0t", words_seen, $time);
+	$display("low RAM cleared: %0d words; TOS loaded: %0d words at t=%0t", clear_seen, words_seen, $time);
+	if (clear_seen != 2048) begin $display("expected 2048 cleared words"); errors = errors + 1; end
 	if (words_seen != TOS_SIZE / 2) begin $display("expected %0d words", TOS_SIZE/2); errors = errors + 1; end
 	repeat (100) @(posedge clk_32);
 	if (!mounted_a) begin $display("drive A not mounted"); errors = errors + 1; end

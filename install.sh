@@ -5,6 +5,7 @@
 #   ./install.sh                 find the SD card, then install
 #   ./install.sh --sd /Volumes/POCKET
 #   ./install.sh --dry-run       show what would be copied, change nothing
+#   ./install.sh --reset-settings  also erase the core's saved settings (asks first)
 #
 # On Windows use install.bat (double-click) / install.ps1, or run this under Git Bash.
 #
@@ -20,12 +21,14 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 SD=""
 DRY_RUN=0
+RESET_SETTINGS=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--sd) SD="${2:-}"; shift 2 ;;
 		--sd=*) SD="${1#--sd=}"; shift ;;
 		--dry-run|-n) DRY_RUN=1; shift ;;
-		-h|--help) sed -n '3,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		--reset-settings) RESET_SETTINGS=1; shift ;;
+		-h|--help) sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "unknown option: $1 (see --help)" >&2; exit 1 ;;
 	esac
 done
@@ -121,6 +124,26 @@ fi
 [ -d "$SD" ] || die "$SD is not a directory"
 [ -w "$SD" ] || die "$SD is not writable"
 is_pocket_card "$SD" || say "Note: $SD has no Cores/Platforms/Assets folders yet; they will be created."
+
+# ---------------------------------------------------------------------------
+# 2b. Optionally erase the settings the Pocket saved for this core
+# ---------------------------------------------------------------------------
+
+if [ $RESET_SETTINGS -eq 1 ]; then
+	settings="$SD/Settings/$CORE"
+	if [ ! -d "$settings" ]; then
+		say "No saved settings for $CORE on the card (nothing to reset)."
+	elif [ $DRY_RUN -eq 1 ]; then
+		say "would erase $settings"
+	elif [ $INTERACTIVE -eq 0 ]; then
+		say "Not erasing $settings without a terminal to confirm."
+	else
+		case "$(ask "Erase the saved settings in $settings? The core starts with defaults. [y/N]" n)" in
+			[yY]*) rm -rf "$settings" && say "Erased saved settings: the core will start with its defaults." ;;
+			*) say "Saved settings kept." ;;
+		esac
+	fi
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Copy, never replacing anything

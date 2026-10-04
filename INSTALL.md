@@ -48,8 +48,8 @@ open-source TOS replacement (GPL, https://emutos.sourceforge.io), in `Assets/ata
 
 | File                 | Use it for                                                    |
 |----------------------|---------------------------------------------------------------|
-| `tos.img`            | EmuTOS 192 KB, English. Loaded automatically; for *Machine = ST* with the 68000 (the defaults) |
-| `emutos-256k-uk.img` | EmuTOS 256 KB, English. For *STE*, *Mega STE* or the 68020 CPU |
+| `tos.img`            | EmuTOS 256 KB, English. Loaded automatically; autodetects the machine, so it works with every *Machine* and *CPU* setting |
+| `emutos-192k-uk.img` | EmuTOS 192 KB, English. TOS 1 style; *Machine = ST* with the 68000 only |
 | `emutos-192k-fr.img` / `emutos-256k-fr.img` | French versions (AZERTY keyboard layout)  |
 
 To switch, pick the file in *Core Settings → TOS*; the ST resets with it. With no disk inserted, EmuTOS
@@ -86,9 +86,14 @@ Useful settings (*Core Settings*):
 | Machine       | ST / STE / Mega STE (resets the ST)                       |
 | Memory        | 512 KB to 14 MB; 1 MB is the default (resets the ST)      |
 | Monitor       | Colour, or Mono for 640×400 high-res software             |
-| Pad Mode      | Joystick, or Mouse (D-pad moves the GEM pointer)          |
+| Pad Mode      | Mouse (default, for the GEM desktop) or Joystick (games)  |
 | Borders       | Show or hide the screen borders                           |
-| Reset ST      | Warm reset                                                |
+| Reset ST (warm) | Like the reset button on a real ST                      |
+| Cold Restart  | Clears memory, reloads TOS and restarts from scratch      |
+| Reset All Settings | Puts every setting back to its default, then a cold restart |
+
+Changing *Machine*, *Memory*, *CPU* or *Monitor* always does a cold restart, so the ST re-detects its
+memory and hardware.
 
 ## Controls
 
@@ -96,7 +101,7 @@ No keyboard needed. The scheme follows the Pocket Amiga core:
 
 | Pocket button | Joystick mode | Mouse mode   | On-screen keyboard |
 |---------------|---------------|--------------|--------------------|
-| D-pad         | Joystick      | Move pointer | Move cursor        |
+| D-pad         | Joystick (game port) | Move pointer | Move cursor |
 | A             | Fire          | Left click   | Press key          |
 | B             | Fire 2        | Right click  | Close keyboard     |
 | X / Y         | Space / Return| Space / Return | -                |
@@ -104,13 +109,21 @@ No keyboard needed. The scheme follows the Pocket Amiga core:
 | **Select**    | Show keyboard | Show keyboard | Close keyboard    |
 | **Start**     | Mouse mode    | Joystick mode | -                 |
 
-On the on-screen keyboard, Ctrl/Shift/Alt are sticky: press Shift, then the letter. For GEM, press
-Start to use the D-pad as the mouse; press Start again to play with the joystick.
+The pad starts in **mouse mode** for the GEM desktop. Press **Start** to switch to the joystick for a game
+(and back); a MOUSE / JOYSTICK label shows the new mode for two seconds. In joystick mode the desktop
+does not react to the D-pad: that is the ST's game port, which only games read. On the on-screen
+keyboard, Ctrl/Shift/Alt are sticky: press Shift, then the letter.
 
 In the Dock, a USB keyboard and mouse work as the real ST keyboard and mouse (Page Up = Help,
 Page Down = Undo), and an analog controller's left stick moves the mouse.
 
 ## Troubleshooting
+
+* **Stuck after changing a setting (black screen, bombs, bus error):** in *Core Settings* choose
+  **Reset All Settings**. If you cannot reach the menu, erase the saved settings from the card with the
+  installer: `./install.sh --reset-settings` (Windows: `install.bat -ResetSettings`), or delete the folder
+  `Settings/defgenx.AtariST/` on the card.
+* **Something is wrong after a crash:** *Core Settings → Cold Restart* restarts the ST from scratch.
 
 * **Black screen, nothing happens:** `tos.img` is missing from `Assets/atarist/common/` or is not a raw
   192/256 KB image (exactly 196,608 or 262,144 bytes). Re-copy it from the release zip.

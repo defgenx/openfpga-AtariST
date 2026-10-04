@@ -41,6 +41,7 @@ module st_media (
 	input  wire [31:0] datatable_q,
 
 	// ST side (clk_32)
+	input  wire        cold_req,       // pulse: clear low RAM, reload TOS, restart
 	output reg         tos_done,
 
 	output reg         data_download,
@@ -234,7 +235,8 @@ localparam [4:0]
 	S_FD_RD_DATA = 5'd10,
 	S_FD_WR_DATA = 5'd11,
 	S_FD_WR_WAIT = 5'd12,
-	S_FD_END     = 5'd13;
+	S_FD_END     = 5'd13,
+	S_CLEAR      = 5'd14;
 
 reg  [4:0] state;
 reg  [5:0] tos_chunk;
@@ -281,6 +283,7 @@ always @(posedge clk_32) begin
 	if (mount_s0[2] != mount_seen[0]) begin mount_seen[0] <= mount_s0[2]; mount_pending[0] <= 1'b1; end
 	if (mount_s1[2] != mount_seen[1]) begin mount_seen[1] <= mount_s1[2]; mount_pending[1] <= 1'b1; end
 	if (tos_s[2] != tos_seen) begin tos_seen <= tos_s[2]; tos_pending <= 1'b1; end
+	if (cold_req) tos_pending <= 1'b1;
 
 	case (state)
 	S_BOOT: begin
@@ -290,7 +293,24 @@ always @(posedge clk_32) begin
 			tos_chunk <= 6'd0;
 			tos_chunks <= 7'd1; // refined once the header is parsed
 			data_download <= 1'b1;
-			state <= S_TOS_REQ;
+			word_idx <= 11'd0;
+			pace <= 6'd0;
+			state <= S_CLEAR;
+		end
+	end
+
+	// Every boot is a cold boot: zero $0-$FFF so TOS finds no memvalid magic
+	// ($420/$43A/$51A) and sizes memory again after a RAM or machine change.
+	S_CLEAR: begin
+		pace <= pace + 6'd1;
+		if (pace == 6'd0) begin
+			data_in_reg <= 16'h0000;
+			data_addr <= {12'd0, word_idx};
+		end
+		if (pace == 6'd4) data_in_strobe <= ~data_in_strobe;
+		if (pace == 6'd63) begin
+			word_idx <= word_idx + 11'd1;
+			if (word_idx == 11'd2047) state <= S_TOS_REQ;
 		end
 	end
 

@@ -508,7 +508,8 @@ end
 /* ------------------------------------------------------------------------------ */
 // One register per menu entry; addresses must match interact.json.
 
-reg        cfg_reset_t;          // toggles on "Reset ST"
+reg        cfg_reset_t = 1'b0;   // toggles on "Reset ST" (warm)
+reg        cfg_cold_t  = 1'b0;   // toggles on "Cold Restart" and "Reset All Settings"
 reg  [1:0] cfg_model    = 2'd0;  // 0 ST, 1 STE, 2 Mega STE
 reg  [2:0] cfg_mem      = 3'd1;  // 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M
 reg        cfg_mono     = 1'b0;
@@ -516,7 +517,7 @@ reg        cfg_blitter  = 1'b0;
 reg        cfg_stereo   = 1'b0;
 reg  [1:0] cfg_wp       = 2'b11; // write protect A/B
 reg        cfg_borders  = 1'b1;
-reg        cfg_padmouse = 1'b0;
+reg        cfg_padmouse = 1'b1;
 reg        cfg_cpu020   = 1'b0;
 
 always @(posedge clk_74a) begin
@@ -532,6 +533,12 @@ always @(posedge clk_74a) begin
 		8'h1C: cfg_borders  <= bridge_wr_data[0];
 		8'h20: cfg_padmouse <= bridge_wr_data[0];
 		8'h24: cfg_cpu020   <= bridge_wr_data[0];
+		8'h28: cfg_cold_t   <= ~cfg_cold_t;
+		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
+			cfg_model <= 2'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
+			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmouse <= 1'b1;
+			cfg_cpu020 <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
+		end
 		default: ;
 		endcase
 	end
@@ -550,10 +557,11 @@ always @(posedge clk_74a) begin
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [14:0] cfg_s;
-synch_3 #(.WIDTH(15)) s_cfg(
-	{cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmouse, cfg_cpu020},
+wire [15:0] cfg_s;
+synch_3 #(.WIDTH(16)) s_cfg(
+	{cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmouse, cfg_cpu020},
 	cfg_s, clk_32);
+wire       cold_t_32   = cfg_s[15];
 wire       reset_t_32  = cfg_s[14];
 wire [1:0] model_32    = cfg_s[13:12];
 wire [2:0] mem_32      = cfg_s[11:9];
@@ -574,17 +582,23 @@ synch_3 s_rst(reset_n, reset_n_s, clk_32);
 
 wire tos_done;
 
-// Machine-shape changes (model, RAM, CPU, monitor) need a reset to take effect.
-reg  [6:0] machine_d = 0;
-reg        reset_t_d = 0;
+// "Reset ST" is a warm reset. Machine-shape changes (model, RAM, CPU, monitor) and
+// "Cold Restart" go through st_media, which clears low RAM and reloads TOS, so TOS
+// sizes memory and detects the hardware again instead of trusting a stale memvalid.
+reg  [6:0] machine_d = {2'd0, 3'd1, 1'b0, 1'b0};   // defaults, so power-up is no change
+reg        reset_t_d = 1'b0;
+reg        cold_t_d  = 1'b0;
 reg [15:0] reset_hold = 0;
+reg        cold_req = 1'b0;
 wire [6:0] machine = {model_32, mem_32, cpu020_32, mono_32};
 
 always @(posedge clk_32) begin
 	machine_d <= machine;
 	reset_t_d <= reset_t_32;
+	cold_t_d  <= cold_t_32;
+	cold_req  <= (machine != machine_d) || (cold_t_32 != cold_t_d);
 	if (reset_hold != 0) reset_hold <= reset_hold - 16'd1;
-	if (machine != machine_d || reset_t_32 != reset_t_d) reset_hold <= 16'hFFFF;
+	if (reset_t_32 != reset_t_d) reset_hold <= 16'hFFFF;
 end
 
 wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0);
@@ -653,6 +667,7 @@ st_media media (
 	.datatable_addr             ( datatable_addr ),
 	.datatable_q                ( datatable_q ),
 
+	.cold_req                   ( cold_req ),
 	.tos_done                   ( tos_done ),
 	.data_download              ( data_download ),
 	.data_addr                  ( data_addr ),
@@ -723,6 +738,15 @@ always @(posedge clk_32) begin
 	else if (osk_mouse_toggle)      mouse_mode_flip <= ~mouse_mode_flip;
 end
 wire pad_mouse_mode = (padmouse_32 ^ mouse_mode_flip) & ~osk_visible;
+
+// show MOUSE / JOYSTICK for ~2 s whenever the mode changes
+reg [25:0] badge_timer = 26'd0;
+reg        mode_d = 1'b1;
+always @(posedge clk_32) begin
+	mode_d <= padmouse_32 ^ mouse_mode_flip;
+	if ((padmouse_32 ^ mouse_mode_flip) != mode_d) badge_timer <= 26'd64_000_000;
+	else if (badge_timer != 0) badge_timer <= badge_timer - 26'd1;
+end
 
 // pad 1 drives the ST joystick port unless it is the mouse or typing on the keyboard;
 // pad 2 drives the mouse port (port 0), which the IKBD shares with the mouse.
@@ -996,6 +1020,8 @@ osk_overlay osk_overlay (
 	.cur_row    ( osk_row ),
 	.cur_col    ( osk_col ),
 	.mods       ( osk_mods ),
+	.badge      ( badge_timer != 0 ),
+	.badge_mouse( padmouse_32 ^ mouse_mode_flip ),
 	.in_rgb     ( st_video_rgb ),
 	.in_de      ( st_video_de ),
 	.in_skip    ( st_video_skip ),

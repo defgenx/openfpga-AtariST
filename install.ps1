@@ -13,11 +13,13 @@
     .\install.ps1
     .\install.ps1 -SD E:\
     .\install.ps1 -DryRun
+    .\install.ps1 -ResetSettings   # also erase the core's saved settings (asks first)
 #>
 [CmdletBinding()]
 param(
     [string]$SD = "",
-    [switch]$DryRun
+    [switch]$DryRun,
+    [switch]$ResetSettings
 )
 
 $ErrorActionPreference = "Stop"
@@ -117,6 +119,26 @@ try {
 
     if (-not (Test-Path -LiteralPath $SD -PathType Container)) { Fail "$SD is not a drive or folder" }
     if (-not (Test-PocketCard $SD)) { Write-Host "Note: $SD has no Cores/Platforms/Assets folders yet; they will be created." }
+
+    # -----------------------------------------------------------------------
+    # 2b. Optionally erase the settings the Pocket saved for this core
+    # -----------------------------------------------------------------------
+
+    if ($ResetSettings) {
+        $settings = Join-Path $SD "Settings/$Core"
+        if (-not (Test-Path -LiteralPath $settings)) {
+            Write-Host "No saved settings for $Core on the card (nothing to reset)."
+        } elseif ($DryRun) {
+            Write-Host "would erase $settings"
+        } elseif (-not $Interactive) {
+            Write-Host "Not erasing $settings without a console to confirm."
+        } elseif ((Ask "Erase the saved settings in $settings? The core starts with defaults. [y/N]" "n") -match "^[yY]") {
+            Remove-Item -LiteralPath $settings -Recurse -Force
+            Write-Host "Erased saved settings: the core will start with its defaults."
+        } else {
+            Write-Host "Saved settings kept."
+        }
+    }
 
     # -----------------------------------------------------------------------
     # 3. Copy, never replacing anything

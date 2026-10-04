@@ -3,11 +3,19 @@
     "magic": "APF_VER_1",
     "variables": [
       {
-        "name": "Reset ST",
+        "name": "Reset ST (warm)",
         "id": 1,
         "type": "action",
         "enabled": true,
         "address": "0x80000000",
+        "value": 1
+      },
+      {
+        "name": "Cold Restart",
+        "id": 11,
+        "type": "action",
+        "enabled": true,
+        "address": "0x80000028",
         "value": 1
       },
       {
@@ -197,17 +205,25 @@
         "enabled": true,
         "persist": true,
         "address": "0x80000020",
-        "defaultval": 0,
+        "defaultval": 1,
         "options": [
-          {
-            "value": 0,
-            "name": "Joystick"
-          },
           {
             "value": 1,
             "name": "Mouse"
+          },
+          {
+            "value": 0,
+            "name": "Joystick"
           }
         ]
+      },
+      {
+        "name": "Reset All Settings",
+        "id": 12,
+        "type": "action",
+        "enabled": true,
+        "address": "0x8000002C",
+        "value": 1
       }
     ],
     "messages": []

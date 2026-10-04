@@ -79,12 +79,14 @@ by whole steps.
 
 ## Settings
 
-Each `interact.json` entry writes its own register; all are read back for APF's read-modify-write.
-Changing machine, RAM, CPU or monitor resets the ST (MiSTery only samples those at reset).
+Each `interact.json` entry writes its own register; all are read back, so APF shows (and saves) whatever
+the core holds. Changing machine, RAM, CPU or monitor triggers a **cold restart**: `st_media` holds the ST
+in reset, zeroes `$0`–`$FFF` (TOS's memvalid magic at `$420`/`$43A`/`$51A`) and reloads TOS. A warm
+reset would keep the magic, and TOS would skip memory sizing and keep a stale memory configuration.
 
 | Address       | Setting        | Values                                   |
 |---------------|----------------|------------------------------------------|
-| `0x80000000`  | Reset ST       | any write                                |
+| `0x80000000`  | Reset ST (warm) | any write                               |
 | `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE                  |
 | `0x80000008`  | Memory         | 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M    |
 | `0x8000000C`  | Monitor        | 0 colour, 1 mono                         |
@@ -92,8 +94,10 @@ Changing machine, RAM, CPU or monitor resets the ST (MiSTery only samples those 
 | `0x80000014`  | YM stereo      | 0/1                                      |
 | `0x80000018`  | Write protect  | bit 0 drive A, bit 1 drive B             |
 | `0x8000001C`  | Borders        | 0 hide, 1 show                           |
-| `0x80000020`  | Pad mode       | 0 joystick, 1 mouse                      |
+| `0x80000020`  | Pad mode       | 0 joystick, 1 mouse (default)            |
 | `0x80000024`  | CPU            | 0 68000 (FX68K), 1 68020 (TG68K)         |
+| `0x80000028`  | Cold Restart   | any write                                |
+| `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
 
 ## Not ported
 
