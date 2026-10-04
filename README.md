@@ -10,6 +10,8 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 ## Features
 
 * ST, STE, Mega STE (16 MHz) and STE Turbo (16 MHz STE with a fast bus, MiSTery's *STEroids*) machines, 512 KB – 14 MB RAM, cycle-accurate 68000 (FX68K)
+* TOS and machine stay in sync: *Machine = Auto* reads the TOS version and picks the ST model it needs
+* A loading screen with a progress bar while TOS loads
 * Ready to run: [EmuTOS](https://emutos.sourceforge.io) (free TOS replacement) is bundled; any original
   192 KB or 256 KB TOS works too, and picking another TOS from the menu reloads it
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
@@ -81,8 +83,8 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 |--------------------|--------------------------------------|----------------------------------------------------------|
 | Reset ST (warm)    | –                                    | like the reset button on a real ST                       |
 | Cold Restart       | –                                    | clears memory, reloads TOS, restarts from scratch        |
-| Machine            | ST / STE / Mega STE / STE Turbo      | cold restart; STE models need a 256 KB TOS (the default is); STE Turbo is not a real Atari model |
-| Memory             | 512 KB … 14 MB (1 MB default)        | cold restart; original TOS sees at most 4 MB, 8/14 MB are EmuTOS only |
+| Machine            | **Auto** / ST / STE / Mega STE / STE Turbo | **Auto** (default) picks the machine your TOS needs: TOS 1.06/1.62 → STE, TOS 2.05 → Mega STE, anything else → ST. Pick one yourself only if you know the TOS supports it; STE Turbo is not a real Atari model |
+| Memory             | 512 KB … 14 MB (1 MB default)        | cold restart; with original Atari TOS, 8/14 MB are capped to 4 MB automatically (EmuTOS uses them) |
 | Monitor            | Colour / Mono (SM124)                | cold restart; mono is 640×400 high-res software only     |
 | Blitter (ST only)  | Off / On                             | the STE and Mega STE always have one                     |
 | YM Stereo          | Off / On                             | spreads the three sound channels left/right              |
@@ -110,6 +112,7 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | **Black screen at start** | `Assets/atarist/common/tos.img` is missing or not a raw 192/256 KB TOS (exactly 196,608 or 262,144 bytes). Re-run the installer, or copy `tos.img` from the release zip. |
 | **The D-pad does nothing on the desktop** | You are in joystick or keys mode. Press **Start** until the label shows MOUSE. |
 | **A game ignores the joystick** | Press **Start** until the label shows JOYSTICK. If the game is played on the keyboard, use KEYS mode instead. |
+| **Blank screen or crash after changing *Machine* or *Memory*** | Set *Machine* back to **Auto**: it always matches the TOS. A TOS that doesn't support the machine you picked boots to a blank screen. |
 | **Crash with *Machine = STE* or *Mega STE*** | The TOS doesn't support that machine: 192 KB TOS (1.00–1.04, `emutos-192k-*.img`) is ST only. Use `tos.img` (256 KB EmuTOS) or TOS 1.06/1.62/2.06. |
 | **Memory setting has no effect, or the screen breaks after changing it** | Fixed in v0.1.4: update. The change must cold-restart the ST; a warm reset keeps the old memory layout. |
 | **A game or demo refuses to run** | It may need Atari's original TOS rather than EmuTOS (copy your dump as `tos.img`), or a specific machine (try *Machine = ST*, *Memory = 1 MB*). |

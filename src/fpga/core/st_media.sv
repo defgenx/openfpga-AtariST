@@ -2,13 +2,13 @@
 // st_media.sv - TOS loading and floppy sector access over APF target commands
 //
 // Every data slot is "deferload": nothing is pushed by APF at boot. This module
-// pulls the TOS ROM in 4 KB chunks and serves the FDC's 512-byte sector requests
+// pulls the TOS ROM in 16 KB chunks and serves the FDC's 512-byte sector requests
 // with Dataslot Read/Write target commands, so all transfers are flow-controlled
 // by the core. See docs/architecture.md for the full sequence.
 //
 // Bridge map:
-//   0x1000_0000-0x1000_0FFF  read buffer  (APF writes into it)
-//   0x1000_2000-0x1000_21FF  write buffer (APF reads from it)
+//   0x1000_0000-0x1000_3FFF  read buffer  (APF writes into it)
+//   0x1000_8000-0x1000_81FF  write buffer (APF reads from it)
 //
 
 `default_nettype none
@@ -43,6 +43,10 @@ module st_media (
 	// ST side (clk_32)
 	input  wire        cold_req,       // pulse: clear low RAM, reload TOS, restart
 	output reg         tos_done,
+	output wire        load_cart,      // loading screen: cartridge rather than TOS
+	output reg  [15:0] tos_ver = 16'h0000, // os_version from the TOS header ($0104, $0206 ...)
+	output reg         tos_emutos = 1'b0,  // header carries EmuTOS's "ETOS" magic
+	output reg  [11:0] load_pct = 12'h000, // loading screen: progress, 3 BCD digits (000-100)
 
 	output reg         data_download,
 	output reg  [23:1] data_addr,
@@ -79,31 +83,33 @@ localparam [15:0] SLOT_HDD_1 = 16'd4;
 localparam [15:0] SLOT_CART  = 16'd5;
 
 localparam [31:0] RBUF_ADDR = 32'h1000_0000;
-localparam [31:0] WBUF_ADDR = 32'h1000_2000;
+// clocks between ROM words: MiSTery takes one per 16-clock bus slot; 2x margin
+localparam [5:0] STROBE_GAP = 6'd31;
+localparam [31:0] WBUF_ADDR = 32'h1000_8000;
 
 /* ------------------------------------------------------------------------ */
 /* Buffers: one byte lane per RAM so the 32-bit bridge side and the 8-bit   */
 /* ST side infer plain dual-clock M10K blocks.                              */
 /* ------------------------------------------------------------------------ */
 
-reg [7:0] rbuf0[1024], rbuf1[1024], rbuf2[1024], rbuf3[1024];
-wire      rbuf_we = bridge_wr && bridge_addr[31:12] == RBUF_ADDR[31:12];
+reg [7:0] rbuf0[4096], rbuf1[4096], rbuf2[4096], rbuf3[4096];   // 16 KB
+wire      rbuf_we = bridge_wr && bridge_addr[31:14] == RBUF_ADDR[31:14];
 
 always @(posedge clk_74a) if (rbuf_we) begin
-	rbuf0[bridge_addr[11:2]] <= bridge_wr_data[31:24];
-	rbuf1[bridge_addr[11:2]] <= bridge_wr_data[23:16];
-	rbuf2[bridge_addr[11:2]] <= bridge_wr_data[15:8];
-	rbuf3[bridge_addr[11:2]] <= bridge_wr_data[7:0];
+	rbuf0[bridge_addr[13:2]] <= bridge_wr_data[31:24];
+	rbuf1[bridge_addr[13:2]] <= bridge_wr_data[23:16];
+	rbuf2[bridge_addr[13:2]] <= bridge_wr_data[15:8];
+	rbuf3[bridge_addr[13:2]] <= bridge_wr_data[7:0];
 end
 
-reg [11:0] rbuf_raddr;
+reg [13:0] rbuf_raddr;
 reg  [7:0] rq0, rq1, rq2, rq3;
 reg  [1:0] rbuf_lane;
 always @(posedge clk_32) begin
-	rq0 <= rbuf0[rbuf_raddr[11:2]];
-	rq1 <= rbuf1[rbuf_raddr[11:2]];
-	rq2 <= rbuf2[rbuf_raddr[11:2]];
-	rq3 <= rbuf3[rbuf_raddr[11:2]];
+	rq0 <= rbuf0[rbuf_raddr[13:2]];
+	rq1 <= rbuf1[rbuf_raddr[13:2]];
+	rq2 <= rbuf2[rbuf_raddr[13:2]];
+	rq3 <= rbuf3[rbuf_raddr[13:2]];
 	rbuf_lane <= rbuf_raddr[1:0];
 end
 wire [7:0] rbuf_q = rbuf_lane == 2'd0 ? rq0 : rbuf_lane == 2'd1 ? rq1 : rbuf_lane == 2'd2 ? rq2 : rq3;
@@ -174,12 +180,12 @@ always @(posedge clk_74a) begin
 
 	// a disk or TOS picked from the Pocket menu while running
 	if (dataslot_update) begin
-		if (dataslot_update_id == SLOT_TOS) tos_t_74 <= ~tos_t_74;
+		if (dataslot_update_id == SLOT_TOS && boot_ready_74) tos_t_74 <= ~tos_t_74;
 		if (dataslot_update_id == SLOT_FDD_A) begin size_74[0] <= dataslot_update_size; mount_t_74[0] <= ~mount_t_74[0]; end
 		if (dataslot_update_id == SLOT_FDD_B) begin size_74[1] <= dataslot_update_size; mount_t_74[1] <= ~mount_t_74[1]; end
 		if (dataslot_update_id == SLOT_HDD_0) hd_size0 <= dataslot_update_size;
 		if (dataslot_update_id == SLOT_HDD_1) hd_size1 <= dataslot_update_size;
-		if (dataslot_update_id == SLOT_CART)  begin cart_size_74 <= dataslot_update_size; tos_t_74 <= ~tos_t_74; end
+		if (dataslot_update_id == SLOT_CART)  begin cart_size_74 <= dataslot_update_size; if (boot_ready_74) tos_t_74 <= ~tos_t_74; end
 	end
 end
 
@@ -258,14 +264,15 @@ localparam [4:0]
 	S_CLEAR      = 5'd14;
 
 reg  [4:0] state;
-reg  [5:0] tos_chunk;
+reg  [5:0] tos_chunk;            // 16 KB chunks
 reg  [6:0] tos_chunks;
 reg [23:1] tos_base;
 reg        loading_cart;        // second pass of the loader: cartridge ROM at $FA0000
 reg  [2:0] cart_skip;           // header bytes skipped (Hatari .stc files may carry 4)
-reg [10:0] word_idx;
+reg [12:0] word_idx;
 reg  [5:0] pace;
-reg  [2:0] hdr_cnt;
+reg  [4:0] hdr_cnt;
+reg        etos_ok;
 reg  [8:0] byte_idx;
 reg  [1:0] phase;               // RAM reads: set address, wait, use q
 reg        hd_cur;              // the request being served is an ACSI one
@@ -297,6 +304,36 @@ initial begin
 	data_in_strobe = 1'b0;
 	data_download = 1'b0;
 	tos_done = 1'b0;
+	loading_cart = 1'b0;
+end
+
+assign load_cart = loading_cart;
+
+// progress in percent, as BCD for the loading screen: each finished chunk adds 100 to
+// 'pct_acc', which is then divided by the chunk count one subtraction per clock
+reg [7:0] pct_acc = 8'd0;
+reg       pct_reset, pct_add, pct_full;
+function [11:0] bcd_inc3(input [11:0] v);
+	bcd_inc3 = v;
+	if (v[3:0] != 4'd9) bcd_inc3[3:0] = v[3:0] + 4'd1;
+	else begin
+		bcd_inc3[3:0] = 4'd0;
+		if (v[7:4] != 4'd9) bcd_inc3[7:4] = v[7:4] + 4'd1;
+		else begin bcd_inc3[7:4] = 4'd0; bcd_inc3[11:8] = v[11:8] + 4'd1; end
+	end
+endfunction
+always @(posedge clk_32) begin
+	if (pct_reset) begin
+		load_pct <= 12'h000;
+		pct_acc <= 8'd0;
+	end else if (pct_full)
+		load_pct <= 12'h100;
+	else if (pct_add)
+		pct_acc <= pct_acc + 8'd100;
+	else if (pct_acc >= {1'b0, tos_chunks} && tos_chunks != 0 && load_pct != 12'h100) begin
+		pct_acc <= pct_acc - {1'b0, tos_chunks};
+		load_pct <= bcd_inc3(load_pct);
+	end
 end
 
 wire [31:0] cart_size_s = cart_size_74;   // quasi-static: only changes before the reload it triggers
@@ -306,23 +343,28 @@ wire [31:0] size_b = size_74[1];
 always @(posedge clk_32) begin
 	wbuf_we <= 1'b0;
 	sd_dout_strobe <= 1'b0;
+	pct_reset <= 1'b0;
+	pct_add <= 1'b0;
+	pct_full <= 1'b0;
 
 	if (mount_s0[2] != mount_seen[0]) begin mount_seen[0] <= mount_s0[2]; mount_pending[0] <= 1'b1; end
 	if (mount_s1[2] != mount_seen[1]) begin mount_seen[1] <= mount_s1[2]; mount_pending[1] <= 1'b1; end
 	if (tos_s[2] != tos_seen) begin tos_seen <= tos_s[2]; tos_pending <= 1'b1; end
-	if (cold_req) tos_pending <= 1'b1;
+	// while TOS is loading the ST is in reset anyway: a restart then would just load twice
+	if (cold_req && tos_done) tos_pending <= 1'b1;
 
 	case (state)
 	S_BOOT: begin
 		tos_done <= 1'b0;
 		data_download <= 1'b0;
 		if (boot_s[2]) begin
+			pct_reset <= 1'b1;
 			loading_cart <= 1'b0;
 			cart_skip <= 3'd0;
 			tos_chunk <= 6'd0;
 			tos_chunks <= 7'd1; // refined once the header is parsed
 			data_download <= 1'b1;
-			word_idx <= 11'd0;
+			word_idx <= 13'd0;
 			pace <= 6'd0;
 			state <= S_CLEAR;
 		end
@@ -334,41 +376,63 @@ always @(posedge clk_32) begin
 		pace <= pace + 6'd1;
 		if (pace == 6'd0) begin
 			data_in_reg <= 16'h0000;
-			data_addr <= {12'd0, word_idx};
+			data_addr <= {10'd0, word_idx};
 		end
 		if (pace == 6'd4) data_in_strobe <= ~data_in_strobe;
-		if (pace == 6'd63) begin
-			word_idx <= word_idx + 11'd1;
-			if (word_idx == 11'd2047) state <= S_TOS_REQ;
+		if (pace == STROBE_GAP) begin
+			pace <= 6'd0;
+			word_idx <= word_idx + 13'd1;
+			if (word_idx == 13'd2047) state <= S_TOS_REQ;
 		end
 	end
 
-	// ---------------- TOS: 4 KB chunks into ST ROM space ----------------
+	// ---------------- TOS: 16 KB chunks into ST ROM space ----------------
 	S_TOS_REQ: if (!req_busy) begin
 		req_write      <= 1'b0;
 		req_slot       <= loading_cart ? SLOT_CART : SLOT_TOS;
-		req_offset     <= {14'd0, tos_chunk, 12'd0} + {29'd0, cart_skip};
-		req_length     <= 32'd4096;
+		req_offset     <= {12'd0, tos_chunk, 14'd0} + {29'd0, cart_skip};
+		req_length     <= 32'd16384;
 		req_bridgeaddr <= RBUF_ADDR;
 		req_t          <= ~req_t;
 		state          <= S_TOS_WAIT;
 	end
 
 	S_TOS_WAIT: if (!req_busy) begin
-		word_idx <= 11'd0;
-		hdr_cnt <= 3'd0;
-		rbuf_raddr <= 12'd9;
+		word_idx <= 13'd0;
+		hdr_cnt <= 5'd0;
+		rbuf_raddr <= 14'd2;
 		state <= (tos_chunk == 0 && !loading_cart) ? S_TOS_HDR : S_TOS_HI;
 	end
 
 	// os_base (long at offset 8) tells 192 KB TOS at $FC0000 from 256 KB TOS at $E00000
+	// Header: os_version at 2-3, os_base at 8-11 (only byte 9 matters: $FC = 192 KB TOS at
+	// $FC0000, else 256 KB at $E00000), "ETOS" at $2C-$2F marks EmuTOS. One byte per 4 clocks.
 	S_TOS_HDR: begin
-		hdr_cnt <= hdr_cnt + 3'd1;
-		if (hdr_cnt == 3'd3) begin
-			if (rbuf_q == 8'hFC) begin tos_base <= 23'h7E0000; tos_chunks <= 7'd48; end
-			else                 begin tos_base <= 23'h700000; tos_chunks <= 7'd64; end
-			state <= S_TOS_HI;
-		end
+		hdr_cnt <= hdr_cnt + 5'd1;
+		case (hdr_cnt[4:2])
+			3'd0: rbuf_raddr <= 14'd2;
+			3'd1: rbuf_raddr <= 14'd3;
+			3'd2: rbuf_raddr <= 14'h2C;
+			3'd3: rbuf_raddr <= 14'h2D;
+			3'd4: rbuf_raddr <= 14'h2E;
+			3'd5: rbuf_raddr <= 14'h2F;
+			3'd6: rbuf_raddr <= 14'd9;
+			default: ;
+		endcase
+		if (hdr_cnt[1:0] == 2'd3) case (hdr_cnt[4:2])
+			3'd0: tos_ver[15:8] <= rbuf_q;
+			3'd1: tos_ver[7:0]  <= rbuf_q;
+			3'd2: etos_ok <= rbuf_q == "E";
+			3'd3: etos_ok <= etos_ok & (rbuf_q == "T");
+			3'd4: etos_ok <= etos_ok & (rbuf_q == "O");
+			3'd5: tos_emutos <= etos_ok & (rbuf_q == "S");
+			3'd6: begin
+				if (rbuf_q == 8'hFC) begin tos_base <= 23'h7E0000; tos_chunks <= 7'd12; end
+				else                 begin tos_base <= 23'h700000; tos_chunks <= 7'd16; end
+				state <= S_TOS_HI;
+			end
+			default: ;
+		endcase
 	end
 
 	// rbuf_q is valid two clocks after rbuf_raddr changes
@@ -384,7 +448,7 @@ always @(posedge clk_32) begin
 		if (pace == 6'd1) data_in_reg[15:8] <= rbuf_q;
 		if (pace == 6'd2) begin
 			data_in_reg[7:0] <= rbuf_q;
-			data_addr <= tos_base + {6'd0, tos_chunk, word_idx};
+			data_addr <= tos_base + {4'd0, tos_chunk, word_idx};
 			state <= S_TOS_PACE;
 		end
 	end
@@ -393,19 +457,22 @@ always @(posedge clk_32) begin
 	S_TOS_PACE: begin
 		pace <= pace + 6'd1;
 		if (pace == 6'd4) data_in_strobe <= ~data_in_strobe;
-		if (pace == 6'd63) begin
-			word_idx <= word_idx + 11'd1;
-			if (word_idx == 11'd2047) begin
+		if (pace == STROBE_GAP) begin
+			word_idx <= word_idx + 13'd1;
+			if (word_idx == 13'd8191) begin
 				tos_chunk <= tos_chunk + 6'd1;
+				pct_add <= 1'b1;
 				state <= S_TOS_REQ;
 				if ({1'b0, tos_chunk} + 7'd1 == tos_chunks) begin
+					pct_full <= 1'b1;
 					if (!loading_cart && cart_size_s != 0) begin
 						// then the cartridge: up to 128 KB at $FA0000 (word $7D0000)
 						loading_cart <= 1'b1;
+						pct_reset <= 1'b1;
 						cart_skip <= (cart_size_s == 32'd131076) ? 3'd4 : 3'd0;
 						tos_base <= 23'h7D0000;
 						tos_chunk <= 6'd0;
-						tos_chunks <= (cart_size_s >= 32'd131072) ? 7'd32 : {2'd0, cart_size_s[16:12]} + {6'd0, |cart_size_s[11:0]};
+						tos_chunks <= (cart_size_s >= 32'd131072) ? 7'd8 : {4'd0, cart_size_s[16:14]} + {6'd0, |cart_size_s[13:0]};
 					end else begin
 						data_download <= 1'b0;
 						tos_done <= 1'b1;
@@ -488,7 +555,7 @@ always @(posedge clk_32) begin
 	// 3 clocks per byte: address, RAM latch, use q
 	S_FD_RD_DATA: begin
 		phase <= phase + 2'd1;
-		if (phase == 2'd0) rbuf_raddr <= {3'd0, byte_idx};
+		if (phase == 2'd0) rbuf_raddr <= {5'd0, byte_idx};
 		if (phase == 2'd2) begin
 			phase <= 2'd0;
 			sd_buff_addr <= byte_idx;

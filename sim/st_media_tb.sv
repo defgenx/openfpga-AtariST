@@ -27,6 +27,10 @@ integer i;
 initial begin
 	for (i = 0; i < TOS_SIZE; i = i + 1) tos[i] = (i * 7 + (i >> 8)) & 8'hff;
 	{tos[8], tos[9], tos[10], tos[11]} = {8'h00, TOS_BASE};   // os_base
+`ifdef TOS256
+	{tos[2], tos[3]} = 16'h0206;
+	{tos['h2C], tos['h2D], tos['h2E], tos['h2F]} = "ETOS";
+`endif
 	for (i = 0; i < FDA_SIZE; i = i + 1) fda[i] = (i * 13 + (i >> 9)) & 8'hff;
 	for (i = 0; i < HD_SIZE; i = i + 1) hd[i] = (i * 29 + (i >> 9)) & 8'hff;
 	for (i = 0; i < CART_SIZE; i = i + 1) cart[i] = (i * 3 + 7) & 8'hff;
@@ -46,6 +50,11 @@ reg  [15:0] ds_update_id = 0;
 reg  [31:0] ds_update_size = 0;
 reg         allcomplete = 0;
 reg         cold_req = 0;
+wire        load_cart;
+wire [15:0] tos_ver;
+wire        tos_emutos;
+wire [11:0] load_pct;
+reg  [11:0] pct_seen_max = 0;
 wire  [9:0] dt_addr;
 reg  [31:0] dt_q;
 
@@ -70,11 +79,12 @@ st_media dut (
 	.target_dataslot_done(t_done),
 	.dataslot_update(ds_update), .dataslot_update_id(ds_update_id), .dataslot_update_size(ds_update_size),
 	.dataslot_allcomplete(allcomplete), .datatable_addr(dt_addr), .datatable_q(dt_q),
-	.cold_req(cold_req), .tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
+	.cold_req(cold_req), .tos_done(tos_done), .load_cart(load_cart), .load_pct(load_pct), .tos_ver(tos_ver), .tos_emutos(tos_emutos), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
 	.img_mounted(img_mounted), .img_size(img_size), .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din),
 	.hd_rd(hd_rd), .hd_wr(hd_wr), .hd_lba(hd_lba), .hd_ack(hd_ack), .hd_din(hd_din), .hd_size0(hd_size0), .hd_size1()
 );
+always @(posedge clk_32) if (data_download && !load_cart && load_pct > pct_seen_max) pct_seen_max <= load_pct;
 reg  [7:0] hd_buf [0:511];
 always @(posedge clk_32) begin
 	if (sd_dout_strobe & hd_ack) hd_buf[sd_buff_addr] <= sd_dout;
@@ -194,6 +204,16 @@ initial begin
 
 	wait (tos_done);
 	$display("low RAM cleared: %0d words; TOS loaded: %0d words at t=%0t", clear_seen, words_seen, $time);
+`ifdef TOS256
+	if (tos_ver !== 16'h0206 || tos_emutos !== 1'b1) begin
+`else
+	if (tos_ver !== {tos[2], tos[3]} || tos_emutos !== 1'b0) begin
+`endif
+		$display("header: tos_ver %04x emutos %b, expected %02x%02x / 0", tos_ver, tos_emutos, tos[2], tos[3]); errors = errors + 1; end
+	else $display("header: TOS version %04x, EmuTOS=%b", tos_ver, tos_emutos);
+	$display("loading screen: TOS reached %0x%%, cartridge ended at %0x%%", pct_seen_max, load_pct);
+	@(posedge clk_32); @(posedge clk_32);
+	if (pct_seen_max < 12'h090 || load_pct != 12'h100) begin $display("progress did not reach 100%%"); errors = errors + 1; end
 	if (clear_seen != 2048) begin $display("expected 2048 cleared words"); errors = errors + 1; end
 	if (words_seen != TOS_SIZE / 2 + 65536) begin $display("expected %0d TOS + 65536 cartridge words, got %0d", TOS_SIZE/2, words_seen); errors = errors + 1; end
 	repeat (100) @(posedge clk_32);

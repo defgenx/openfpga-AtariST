@@ -25,8 +25,12 @@
         "enabled": true,
         "persist": true,
         "address": "0x80000004",
-        "defaultval": 0,
+        "defaultval": 4,
         "options": [
+          {
+            "value": 4,
+            "name": "Auto (match TOS)"
+          },
           {
             "value": 0,
             "name": "ST"

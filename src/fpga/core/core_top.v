@@ -512,7 +512,7 @@ end
 
 reg        cfg_reset_t = 1'b0;   // toggles on "Reset ST" (warm)
 reg        cfg_cold_t  = 1'b0;   // toggles on "Cold Restart" and "Reset All Settings"
-reg  [1:0] cfg_model    = 2'd0;  // 0 ST, 1 STE, 2 Mega STE
+reg  [2:0] cfg_model    = 3'd4;  // 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo, 4 Auto (match the TOS)
 reg  [2:0] cfg_mem      = 3'd1;  // 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M
 reg        cfg_mono     = 1'b0;
 reg        cfg_blitter  = 1'b0;
@@ -529,7 +529,7 @@ always @(posedge clk_74a) begin
 	if (bridge_wr && bridge_addr[31:8] == 24'h800000) begin
 		case (bridge_addr[7:0])
 		8'h00: cfg_reset_t  <= ~cfg_reset_t;
-		8'h04: cfg_model    <= bridge_wr_data[1:0];
+		8'h04: cfg_model    <= bridge_wr_data[2:0];
 		8'h08: cfg_mem      <= bridge_wr_data[2:0];
 		8'h0C: cfg_mono     <= bridge_wr_data[0];
 		8'h10: cfg_blitter  <= bridge_wr_data[0];
@@ -543,7 +543,7 @@ always @(posedge clk_74a) begin
 		8'h3C: cfg_cubase    <= bridge_wr_data[0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
-			cfg_model <= 2'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
+			cfg_model <= 3'd4; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
 			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmode <= 2'd1;
 			cfg_mouse_spd <= 2'd1; cfg_linkmode <= 2'd0; cfg_cubase <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
 		end
@@ -551,7 +551,7 @@ always @(posedge clk_74a) begin
 		endcase
 	end
 	case (bridge_addr[7:0])
-	8'h04: cfg_bridge_rd_data <= cfg_model;
+	8'h04: cfg_bridge_rd_data <= {29'd0, cfg_model};
 	8'h08: cfg_bridge_rd_data <= cfg_mem;
 	8'h0C: cfg_bridge_rd_data <= cfg_mono;
 	8'h10: cfg_bridge_rd_data <= cfg_blitter;
@@ -567,20 +567,31 @@ always @(posedge clk_74a) begin
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [21:0] cfg_s;
-synch_3 #(.WIDTH(22)) s_cfg(
+wire [22:0] cfg_s;
+synch_3 #(.WIDTH(23)) s_cfg(
 	{cfg_cubase, cfg_linkmode, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
 	cfg_s, clk_32);
-wire       cubase_32    = cfg_s[21];
-wire [1:0] linkmode_32  = cfg_s[20:19];
+wire       cubase_32    = cfg_s[22];
+wire [1:0] linkmode_32  = cfg_s[21:20];
 wire       linkmidi_32  = linkmode_32 == 2'd1;
+
+// Machine and RAM follow the TOS so the two can't disagree: TOS 1.06/1.62 need an STE,
+// TOS 2.05 a Mega STE, everything else (TOS 1.0x, 2.06, EmuTOS) runs as an ST; original
+// TOS sizes at most 4 MB. The header is parsed while the ST is held in reset.
+wire [15:0] tos_ver;
+wire        tos_emutos;
+wire [1:0]  tos_machine = tos_emutos ? 2'd0 :
+                          (tos_ver == 16'h0106 || tos_ver == 16'h0162) ? 2'd1 :
+                          (tos_ver == 16'h0205) ? 2'd2 : 2'd0;
+wire [1:0]  model_32 = model_sel_32 == 3'd4 ? tos_machine : model_sel_32[1:0];
+wire [2:0]  mem_32   = (!tos_emutos && mem_sel_32 > 3'd3) ? 3'd3 : mem_sel_32;
 wire       linkser_32   = linkmode_32 == 2'd2;
-wire       stepad_t_32  = cfg_s[18];
-wire [1:0] mouse_spd_32 = cfg_s[17:16];
-wire       cold_t_32    = cfg_s[15];
-wire       reset_t_32   = cfg_s[14];
-wire [1:0] model_32     = cfg_s[13:12];
-wire [2:0] mem_32       = cfg_s[11:9];
+wire       stepad_t_32  = cfg_s[19];
+wire [1:0] mouse_spd_32 = cfg_s[18:17];
+wire       cold_t_32    = cfg_s[16];
+wire       reset_t_32   = cfg_s[15];
+wire [2:0] model_sel_32 = cfg_s[14:12];
+wire [2:0] mem_sel_32   = cfg_s[11:9];
 wire       mono_32      = cfg_s[8];
 wire       blitter_32   = cfg_s[7];
 wire       stereo_32    = cfg_s[6];
@@ -674,6 +685,21 @@ wire  [7:0] dio_dma_status;
 wire [15:0] dio_in_reg, dio_out_reg;
 wire [15:0] media_data_in_reg;
 
+// A real drive's write-protect sensor reads "protected" while a disk goes in or out;
+// TOS latches that in its floppy VBL routine to notice a disk change. Picking an image
+// in the menu reports the drive protected for ~1.5 s, so EmuTOS/TOS re-read the new disk
+// instead of using the old one's cached FAT and directory.
+reg  [1:0] wp_insert = 2'b00;
+reg [25:0] wp_timer0 = 26'd0, wp_timer1 = 26'd0;
+always @(posedge clk_32) begin
+	if (img_mounted[0]) wp_timer0 <= 26'd48_000_000; else if (wp_timer0 != 0) wp_timer0 <= wp_timer0 - 26'd1;
+	if (img_mounted[1]) wp_timer1 <= 26'd48_000_000; else if (wp_timer1 != 0) wp_timer1 <= wp_timer1 - 26'd1;
+	wp_insert <= {wp_timer1 != 0, wp_timer0 != 0};
+end
+
+wire        load_cart;
+wire [11:0] load_pct;
+
 st_media media (
 	.clk_74a                    ( clk_74a ),
 	.clk_32                     ( clk_32 ),
@@ -700,6 +726,10 @@ st_media media (
 
 	.cold_req                   ( cold_req ),
 	.tos_done                   ( tos_done ),
+	.load_cart                  ( load_cart ),
+	.load_pct                   ( load_pct ),
+	.tos_ver                    ( tos_ver ),
+	.tos_emutos                 ( tos_emutos ),
 	.data_download              ( data_download ),
 	.data_addr                  ( data_addr ),
 	.data_in_reg                ( media_data_in_reg ),
@@ -1083,7 +1113,7 @@ atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had on
 	.dma_status_index    ( dio_status_index ),
 
 	.img_mounted         ( img_mounted ),
-	.img_wp              ( wp_32 ),
+	.img_wp              ( wp_32 | wp_insert ),
 	.img_size            ( img_size ),
 	.sd_lba              ( sd_lba ),
 	.sd_rd               ( sd_rd ),
@@ -1173,6 +1203,9 @@ osk_overlay osk_overlay (
 	.mods       ( osk_mods ),
 	.badge      ( badge_timer != 0 ),
 	.badge_mode ( pad_mode ),
+	.loading    ( data_download ),
+	.load_cart  ( load_cart ),
+	.load_pct   ( load_pct ),
 	.in_rgb     ( st_video_rgb ),
 	.in_de      ( st_video_de ),
 	.in_skip    ( st_video_skip ),

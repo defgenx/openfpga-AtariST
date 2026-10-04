@@ -10,6 +10,8 @@ always #15.58 clk = ~clk;
 
 // ---------------- controller ----------------
 reg  [15:0] pad = 0;
+reg         show_loading = 0;
+initial show_loading = $test$plusargs("loading");
 wire        visible, mouse_toggle;
 wire  [2:0] row, mods;
 wire  [3:0] col;
@@ -41,7 +43,7 @@ st_video stv (.clk(clk), .borders(1'b1), .r(bar), .g(~bar), .b({bar[0], 3'b000})
 	.hsync_n(!(hx < 160)), .vsync_n(!(vy < 3)), .blank_n(1'b1), .monomode(1'b0),
 	.video_rgb(st_rgb), .video_de(st_de), .video_skip(st_skip), .video_hs(st_hs), .video_vs(st_vs));
 osk_overlay #(.FONT_FILE("../src/fpga/core/osk_font.hex")) ovl (.clk(clk), .visible(visible),
-	.cur_row(row), .cur_col(col), .mods(mods), .badge(1'b1), .badge_mode(2'd2),
+	.cur_row(row), .cur_col(col), .mods(mods), .badge(1'b1), .badge_mode(2'd2), .loading(show_loading), .load_cart(1'b0), .load_pct(12'h042),
 	.in_rgb(st_rgb), .in_de(st_de), .in_skip(st_skip), .in_hs(st_hs), .in_vs(st_vs),
 	.video_rgb(rgb), .video_de(de), .video_skip(skip), .video_hs(hs), .video_vs(vs));
 

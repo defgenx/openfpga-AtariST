@@ -41,15 +41,17 @@ one sector at a time. With target commands the core asks for exactly what it can
 
 1. After `dataslot_allcomplete`, `st_media` reads the datatable (two words per slot: id, size) to find the
    floppy image sizes and mounts them (`img_mounted` pulse with `img_size`).
-2. It reads TOS chunk 0, checks `os_base` (the long at offset 8): `$FC` means a 192 KB TOS at `$FC0000`,
+2. It reads TOS in 16 KB chunks. From chunk 0 it checks `os_base` (the long at offset 8): `$FC` means a 192 KB TOS at `$FC0000`,
    anything else a 256 KB TOS at `$E00000`. It then streams the ROM into SDRAM through MiSTery's
-   `data_in_strobe_rom` port, one word every 64 clocks, holding the ST in reset (`tos_done` low).
+   `data_in_strobe_rom` port, one word every 32 clocks (MiSTery takes one per 16-clock bus slot),
+   holding the ST in reset (`tos_done` low) behind the loading screen. Restart requests that arrive
+   while TOS is loading are dropped: the ST is still in reset, so new settings apply when it starts.
 3. FDC `sd_rd`: Dataslot Read of `lba*512` from slot 1 or 2 into the read buffer, then 512 bytes into the
    FDC's sector buffer. `sd_wr`: the FDC buffer is copied to the write buffer, then Dataslot Write.
 4. Picking a new disk in the Pocket menu sends Dataslot Update; the drive is re-mounted. Picking a new TOS
    reloads it and resets the machine.
 
-Bridge buffers: read buffer `0x1000_0000`–`0x1000_0FFF`, write buffer `0x1000_2000`–`0x1000_21FF`.
+Bridge buffers: read buffer `0x1000_0000`–`0x1000_3FFF` (16 KB), write buffer `0x1000_8000`–`0x1000_81FF`.
 
 Clock domains: the command engine runs on `clk_74a`, everything facing MiSTery on `clk_32`. Requests cross
 as a toggle handshake whose parameters are held stable until the acknowledge toggle returns.
@@ -87,7 +89,7 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | Address       | Setting        | Values                                   |
 |---------------|----------------|------------------------------------------|
 | `0x80000000`  | Reset ST (warm) | any write                               |
-| `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo (STEroids) |
+| `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo (STEroids), 4 Auto (default) |
 | `0x80000008`  | Memory         | 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M    |
 | `0x8000000C`  | Monitor        | 0 colour, 1 mono                         |
 | `0x80000010`  | Blitter (ST)   | 0/1 (the STE always has one)             |
@@ -101,6 +103,13 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x8000003C`  | Cubase dongle  | 0 off, 1 on                              |
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
+
+## TOS / machine sync
+
+While loading TOS, `st_media` reads the header: `os_version` (offset 2) and EmuTOS's `ETOS` magic
+(offset `$2C`). With *Machine = Auto*, `core_top` maps TOS 1.06/1.62 to the STE, TOS 2.05 to the Mega
+STE and everything else (TOS 1.0x, 2.06, any EmuTOS) to the ST; for original TOS the RAM setting is
+capped at 4 MB. The ST is in reset during the load, so it starts with the matching configuration.
 
 ## ACSI hard disks
 

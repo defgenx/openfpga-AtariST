@@ -32,6 +32,25 @@ reg [2:0] mem_sel = 1;
 reg  [7:0] acsi_en = 8'h00;
 wire [31:0] system_ctrl = {14'd0, acsi_en, 1'b0, 1'b0 /*mono*/, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
 
+// ---- floppy A: served like st_media (ack, 512 bytes, drop ack) from a .st image ----
+reg  [1:0]  fd_mounted = 0; reg [31:0] fd_size = 0;
+wire [31:0] fd_lba; wire [1:0] fd_rd, fd_wr;
+reg         fd_ack = 0, fd_strobe = 0; reg [8:0] fd_baddr = 0; reg [7:0] fd_dout = 0;
+reg  [7:0]  floppy [0:737279];
+integer     fd_reads = 0, fbi;
+always @(posedge clk_32) begin
+	if (|fd_rd && !fd_ack) begin
+		fd_ack <= 1; fd_reads = fd_reads + 1;
+		if ($test$plusargs("fdlog")) $display("  fdc read lba %0d (t=%0d ms)", fd_lba, $time / 1000000000);
+		repeat (2000) @(posedge clk_32);              // APF read latency
+		for (fbi = 0; fbi < 512; fbi = fbi + 1) begin
+			fd_baddr <= fbi[8:0]; fd_dout <= floppy[fd_lba * 512 + fbi]; fd_strobe <= 1;
+			@(posedge clk_32); fd_strobe <= 0; @(posedge clk_32);
+		end
+		fd_ack <= 0;
+	end
+end
+
 // ---- ACSI hard disk: acsi_ctrl (as in core_top) + a disk image served like st_media ----
 wire [7:0]  dio_status_in;  wire [3:0] dio_status_index;
 wire        dio_ack_t, dio_in_t, dio_out_t; wire [7:0] dio_dma_status;
@@ -82,8 +101,8 @@ atarist_sdram #(1'b0, 1'b1) atarist (
 	.data_in_strobe_rom(1'b0), .data_in_strobe_acsi(dio_in_t), .data_in_reg(dio_in_reg), .data_addr(23'h0), .data_download(1'b0),
 	.data_out_strobe(dio_out_t), .data_out_reg(dio_out_reg), .dma_ack(dio_ack_t), .dma_status(dio_dma_status), .dma_nak(1'b0),
 	.dma_status_in(dio_status_in), .dma_status_index(dio_status_index),
-	.img_mounted(2'b00), .img_wp(2'b11), .img_size(32'd0), .sd_lba(), .sd_rd(), .sd_wr(), .sd_ack(1'b0),
-	.sd_buff_addr(9'd0), .sd_dout(8'h0), .sd_din(), .sd_dout_strobe(1'b0), .LED(),
+	.img_mounted(fd_mounted), .img_wp(2'b11), .img_size(fd_size), .sd_lba(fd_lba), .sd_rd(fd_rd), .sd_wr(fd_wr), .sd_ack(fd_ack),
+	.sd_buff_addr(fd_baddr), .sd_dout(fd_dout), .sd_din(), .sd_dout_strobe(fd_strobe), .LED(),
 	.eth_status(), .eth_mac_begin(1'b0), .eth_mac_strobe(1'b0), .eth_mac_byte(8'h0), .eth_tx_read_begin(1'b0),
 	.eth_tx_read_strobe(1'b0), .eth_tx_read_byte(), .eth_rx_write_begin(1'b0), .eth_rx_write_strobe(1'b0), .eth_rx_write_byte(8'h0),
 	.ps2_kbd_clk(1'b1), .ps2_kbd_data(1'b1), .ps2_mouse_clk(1'b1), .ps2_mouse_data(1'b1),
@@ -101,6 +120,13 @@ task report(input [8*12-1:0] tag);
 		$display("[%0s] PANIC: exception %0d, SR=%04x PC=%08x", tag, L(24'h3c4), W(24'h3cc), {W(24'h3ce), W(24'h3d0)});
 	else
 		$display("[%0s] no panic recorded", tag);
+	begin : marker
+		integer a; reg found; found = 0;
+		for (a = 'h800; a < 'h100000; a = a + 2)
+			if (L(a) == 32'hEDCBA987 && L(a + 4) == 32'h9028384A) begin found = 1; $display("[%0s] AUTO\\MARKER.PRG ran: marker at $%06x", tag, a); end
+		if (!found) $display("[%0s] AUTO\\MARKER.PRG marker not found", tag);
+		$display("[%0s] floppy sector reads=%0d", tag, fd_reads);
+	end
 	$display("[%0s] _drvbits=%08x (C: %0s) acsi sector reads=%0d writes=%0d", tag, L(24'h4c2),
 		L(24'h4c2) & 32'h4 ? "present" : "absent", hd_reads, hd_writes);
 endtask
@@ -110,9 +136,14 @@ task run_ms(input integer ms);
 endtask
 
 integer ms = 400, m, m2, i;
-string hdfile;
+string hdfile, fdfile;
 initial begin
 	if ($value$plusargs("mem=%d", m)) mem_sel = m[2:0];
+	if ($value$plusargs("fd=%s", fdfile)) begin
+		$readmemh(fdfile, floppy);
+		fd_size = 737280;
+		#5000000 fd_mounted = 2'b01; #500000 fd_mounted = 2'b00;   // after the FDC edge detector is defined
+	end
 	if ($value$plusargs("hd=%s", hdfile)) begin
 		$readmemh(hdfile, disk);
 		void'($value$plusargs("hdblocks=%d", disk_blocks));
