@@ -518,7 +518,7 @@ reg        cfg_stereo   = 1'b0;
 reg  [1:0] cfg_wp       = 2'b11; // write protect A/B
 reg        cfg_borders  = 1'b1;
 reg        cfg_padmouse = 1'b1;
-reg        cfg_cpu020   = 1'b0;
+reg  [1:0] cfg_mouse_spd = 2'd1; // 0 slow, 1 normal, 2 fast (D-pad mouse)
 
 always @(posedge clk_74a) begin
 	if (bridge_wr && bridge_addr[31:8] == 24'h800000) begin
@@ -532,12 +532,12 @@ always @(posedge clk_74a) begin
 		8'h18: cfg_wp       <= bridge_wr_data[1:0];
 		8'h1C: cfg_borders  <= bridge_wr_data[0];
 		8'h20: cfg_padmouse <= bridge_wr_data[0];
-		8'h24: cfg_cpu020   <= bridge_wr_data[0];
+		8'h30: cfg_mouse_spd <= bridge_wr_data[1:0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
 			cfg_model <= 2'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
 			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmouse <= 1'b1;
-			cfg_cpu020 <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
+			cfg_mouse_spd <= 2'd1; cfg_cold_t <= ~cfg_cold_t;
 		end
 		default: ;
 		endcase
@@ -551,27 +551,27 @@ always @(posedge clk_74a) begin
 	8'h18: cfg_bridge_rd_data <= cfg_wp;
 	8'h1C: cfg_bridge_rd_data <= cfg_borders;
 	8'h20: cfg_bridge_rd_data <= cfg_padmouse;
-	8'h24: cfg_bridge_rd_data <= cfg_cpu020;
+	8'h30: cfg_bridge_rd_data <= cfg_mouse_spd;
 	default: cfg_bridge_rd_data <= 0;
 	endcase
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [15:0] cfg_s;
-synch_3 #(.WIDTH(16)) s_cfg(
-	{cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmouse, cfg_cpu020},
+wire [16:0] cfg_s;
+synch_3 #(.WIDTH(17)) s_cfg(
+	{cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmouse},
 	cfg_s, clk_32);
-wire       cold_t_32   = cfg_s[15];
-wire       reset_t_32  = cfg_s[14];
-wire [1:0] model_32    = cfg_s[13:12];
-wire [2:0] mem_32      = cfg_s[11:9];
-wire       mono_32     = cfg_s[8];
-wire       blitter_32  = cfg_s[7];
-wire       stereo_32   = cfg_s[6];
-wire [1:0] wp_32       = cfg_s[5:4];
-wire       borders_32  = cfg_s[3];
-wire       padmouse_32 = cfg_s[2];
-wire       cpu020_32   = cfg_s[1];
+wire [1:0] mouse_spd_32 = cfg_s[16:15];
+wire       cold_t_32    = cfg_s[14];
+wire       reset_t_32   = cfg_s[13];
+wire [1:0] model_32     = cfg_s[12:11];
+wire [2:0] mem_32       = cfg_s[10:8];
+wire       mono_32      = cfg_s[7];
+wire       blitter_32   = cfg_s[6];
+wire       stereo_32    = cfg_s[5];
+wire [1:0] wp_32        = cfg_s[4:3];
+wire       borders_32   = cfg_s[2];
+wire       padmouse_32  = cfg_s[1];
 
 /* ------------------------------------------------------------------------------ */
 /* ------------------------------------- Reset ---------------------------------- */
@@ -585,12 +585,12 @@ wire tos_done;
 // "Reset ST" is a warm reset. Machine-shape changes (model, RAM, CPU, monitor) and
 // "Cold Restart" go through st_media, which clears low RAM and reloads TOS, so TOS
 // sizes memory and detects the hardware again instead of trusting a stale memvalid.
-reg  [6:0] machine_d = {2'd0, 3'd1, 1'b0, 1'b0};   // defaults, so power-up is no change
+reg  [5:0] machine_d = {2'd0, 3'd1, 1'b0};   // defaults, so power-up is no change
 reg        reset_t_d = 1'b0;
 reg        cold_t_d  = 1'b0;
 reg [15:0] reset_hold = 0;
 reg        cold_req = 1'b0;
-wire [6:0] machine = {model_32, mem_32, cpu020_32, mono_32};
+wire [5:0] machine = {model_32, mem_32, mono_32};
 
 always @(posedge clk_32) begin
 	machine_d <= machine;
@@ -620,7 +620,7 @@ wire [31:0] system_ctrl = {
 	1'b0,               // 9
 	mono_32,            // 8 mono monitor
 	wp_32,              // 7:6 floppy write protect
-	cpu020_32 ? 2'b11 : 2'b00, // 5:4 CPU
+	2'b00,              // 5:4 CPU: 68000 (FX68K) only
 	mem_32,             // 3:1 RAM size
 	st_reset            // 0 reset
 };
@@ -799,14 +799,19 @@ reg   [4:0] padm_hold;
 reg         pad_mouse_event;
 reg  signed [15:0] pad_dx, pad_dy;
 wire [3:0]  pad_dir = cont1_key_s[3:0];
+// counts per tick for slow / normal / fast; faster once held for ~0.07 s
+wire signed [15:0] pad_step =
+	mouse_spd_32 == 2'd0 ? (padm_hold[4] ? 16'sd2 : 16'sd1) :
+	mouse_spd_32 == 2'd2 ? (padm_hold[4] ? 16'sd6 : 16'sd2) :
+	                       (padm_hold[4] ? 16'sd4 : 16'sd1);
 always @(posedge clk_32) begin
 	pad_mouse_event <= 1'b0;
 	padm_tick <= padm_tick + 17'd1;
 	if (padm_tick == 0) begin   // ~245 Hz
 		if (pad_mouse_mode && pad_dir != 0) begin
 			if (padm_hold != 5'd31) padm_hold <= padm_hold + 5'd1;
-			pad_dx <= pad_dir[3] ? (padm_hold[4] ? 16'sd4 : 16'sd1) : pad_dir[2] ? (padm_hold[4] ? -16'sd4 : -16'sd1) : 16'sd0;
-			pad_dy <= pad_dir[1] ? (padm_hold[4] ? 16'sd4 : 16'sd1) : pad_dir[0] ? (padm_hold[4] ? -16'sd4 : -16'sd1) : 16'sd0;
+			pad_dx <= pad_dir[3] ? pad_step : pad_dir[2] ? -pad_step : 16'sd0;
+			pad_dy <= pad_dir[1] ? pad_step : pad_dir[0] ? -pad_step : 16'sd0;
 			pad_mouse_event <= 1'b1;
 		end else if (stick_moved && !osk_visible) begin
 			pad_dx <= {{11{stick_x[8]}}, stick_x[8:4]};   // stick / 16, sign-extended
@@ -863,7 +868,7 @@ wire        st_hsync_n, st_vsync_n, st_hblank_n, st_vblank_n, st_blank_n;
 wire        st_monomode;
 wire [14:0] audio_mix_l, audio_mix_r;
 
-atarist_sdram #(1'b1, 1'b1) atarist (
+atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had one
 	.clk_96              ( clk_96 ),
 	.clk_32              ( clk_32 ),
 	.clk_128             ( clk_128 ),

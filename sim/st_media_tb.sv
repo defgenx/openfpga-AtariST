@@ -39,6 +39,7 @@ reg         ds_update = 0;
 reg  [15:0] ds_update_id = 0;
 reg  [31:0] ds_update_size = 0;
 reg         allcomplete = 0;
+reg         cold_req = 0;
 wire  [9:0] dt_addr;
 reg  [31:0] dt_q;
 
@@ -62,7 +63,7 @@ st_media dut (
 	.target_dataslot_done(t_done),
 	.dataslot_update(ds_update), .dataslot_update_id(ds_update_id), .dataslot_update_size(ds_update_size),
 	.dataslot_allcomplete(allcomplete), .datatable_addr(dt_addr), .datatable_q(dt_q),
-	.cold_req(1'b0), .tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
+	.cold_req(cold_req), .tos_done(tos_done), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
 	.img_mounted(img_mounted), .img_size(img_size), .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din)
 );
@@ -196,6 +197,17 @@ initial begin
 	@(posedge clk_74a); ds_update <= 0;
 	wait (img_mounted[0]);
 	if (img_size != 819200) begin $display("remount size %0d", img_size); errors = errors + 1; end
+
+	// cold restart (a RAM/machine change in the menu): low RAM cleared and TOS reloaded again
+	clear_seen = 0; words_seen = 0;
+	@(posedge clk_32); cold_req <= 1; @(posedge clk_32); cold_req <= 0;
+	fork : wait_fall
+		begin wait (!tos_done); disable wait_fall; end
+		begin repeat (5000) @(posedge clk_32); $display("tos_done still high 5000 clocks after cold_req: ST not held in reset"); errors = errors + 1; disable wait_fall; end
+	join
+	wait (tos_done);
+	$display("cold restart: %0d words cleared, %0d TOS words reloaded", clear_seen, words_seen);
+	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2) begin $display("cold restart incomplete"); errors = errors + 1; end
 
 	if (errors == 0) $display("PASS");
 	else $display("FAIL: %0d errors", errors);

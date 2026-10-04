@@ -5,3 +5,7 @@ sim/obj_*
 sim/*.ppm
 sim/*.png
 src/fpga/paths_*.txt
+sim/system/obj/
+sim/system/run/
+sim/system/rom/
+sim/system/files.f

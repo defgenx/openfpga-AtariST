@@ -68,30 +68,11 @@
           },
           {
             "value": 4,
-            "name": "8 MB"
+            "name": "8 MB (EmuTOS only)"
           },
           {
             "value": 5,
-            "name": "14 MB"
-          }
-        ]
-      },
-      {
-        "name": "CPU",
-        "id": 4,
-        "type": "list",
-        "enabled": true,
-        "persist": true,
-        "address": "0x80000024",
-        "defaultval": 0,
-        "options": [
-          {
-            "value": 0,
-            "name": "68000"
-          },
-          {
-            "value": 1,
-            "name": "68020"
+            "name": "14 MB (EmuTOS only)"
           }
         ]
       },
@@ -115,7 +96,7 @@
         ]
       },
       {
-        "name": "Blitter (ST)",
+        "name": "Blitter (ST only)",
         "id": 6,
         "type": "list",
         "enabled": true,
@@ -214,6 +195,29 @@
           {
             "value": 0,
             "name": "Joystick"
+          }
+        ]
+      },
+      {
+        "name": "Mouse Speed",
+        "id": 13,
+        "type": "list",
+        "enabled": true,
+        "persist": true,
+        "address": "0x80000030",
+        "defaultval": 1,
+        "options": [
+          {
+            "value": 0,
+            "name": "Slow"
+          },
+          {
+            "value": 1,
+            "name": "Normal"
+          },
+          {
+            "value": 2,
+            "name": "Fast"
           }
         ]
       },

@@ -48,8 +48,8 @@ open-source TOS replacement (GPL, https://emutos.sourceforge.io), in `Assets/ata
 
 | File                 | Use it for                                                    |
 |----------------------|---------------------------------------------------------------|
-| `tos.img`            | EmuTOS 256 KB, English. Loaded automatically; autodetects the machine, so it works with every *Machine* and *CPU* setting |
-| `emutos-192k-uk.img` | EmuTOS 192 KB, English. TOS 1 style; *Machine = ST* with the 68000 only |
+| `tos.img`            | EmuTOS 256 KB, English. Loaded automatically; autodetects the machine, so it works with every *Machine* setting |
+| `emutos-192k-uk.img` | EmuTOS 192 KB, English. TOS 1 style; *Machine = ST* only |
 | `emutos-192k-fr.img` / `emutos-256k-fr.img` | French versions (AZERTY keyboard layout)  |
 
 To switch, pick the file in *Core Settings → TOS*; the ST resets with it. With no disk inserted, EmuTOS
@@ -128,7 +128,7 @@ Page Down = Undo), and an analog controller's left stick moves the mouse.
 * **Black screen, nothing happens:** `tos.img` is missing from `Assets/atarist/common/` or is not a raw
   192/256 KB image (exactly 196,608 or 262,144 bytes). Re-copy it from the release zip.
 * **Bombs or a crash at boot:** the TOS doesn't match the machine, e.g. the 192 KB EmuTOS with
-  *Machine = STE* or the 68020 CPU. Use `emutos-256k-uk.img` for those. See step 2.
+  *Machine = STE*. Use `tos.img` (256 KB EmuTOS) for that. See step 2.
 * **A game refuses to run:** it may need Atari's original TOS rather than EmuTOS.
 * **Disk not seen:** only `.st` images work; set the disk in *Floppy A* before booting a game that
   needs it, then use *Reset ST*.

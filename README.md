@@ -9,7 +9,7 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
 ## Features
 
-* ST, STE and Mega STE (16 MHz) machines, 512 KB – 14 MB RAM, 68000 (FX68K) or 68020 (TG68K)
+* ST, STE and Mega STE (16 MHz) machines, 512 KB – 14 MB RAM, cycle-accurate 68000 (FX68K)
 * Ready to run: [EmuTOS](https://emutos.sourceforge.io) (free TOS replacement) is bundled; any original
   192 KB or 256 KB TOS works too, and picking another TOS from the menu reloads it
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
@@ -75,14 +75,14 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 | Reset ST (warm)    | –                                    | like the reset button on a real ST                       |
 | Cold Restart       | –                                    | clears memory, reloads TOS, restarts from scratch        |
 | Machine            | ST / STE / Mega STE                  | cold restart; STE needs a 256 KB TOS (the default is)    |
-| Memory             | 512 KB … 14 MB (1 MB default)        | cold restart                                             |
-| CPU                | 68000 / 68020                        | cold restart; 68020 needs a 256 KB TOS (the default is)  |
+| Memory             | 512 KB … 14 MB (1 MB default)        | cold restart; original TOS sees at most 4 MB, 8/14 MB are EmuTOS only |
 | Monitor            | Colour / Mono (SM124)                | cold restart; mono is 640×400 high-res software only     |
-| Blitter (ST)       | Off / On                             | the STE and Mega STE always have one                     |
+| Blitter (ST only)  | Off / On                             | the STE and Mega STE always have one                     |
 | YM Stereo          | Off / On                             | spreads the three sound channels left/right              |
 | Write Protect      | A and B / B only / A only / None     | floppies are protected by default — keep backups         |
 | Borders            | Show / Hide                          | hide to fill the screen with the 320×200 / 640×200 area  |
 | Pad Mode           | Mouse / Joystick                     | the mode the pad starts in; Start flips it               |
+| Mouse Speed        | Slow / Normal / Fast                 | speed of the D-pad mouse                                 |
 | Reset All Settings | –                                    | every setting back to its default, then a cold restart   |
 | TOS / Floppy A / B | file picker                          | a new TOS reloads and restarts; disks swap live          |
 
@@ -98,7 +98,8 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | **Black screen at start** | `Assets/atarist/common/tos.img` is missing or not a raw 192/256 KB TOS (exactly 196,608 or 262,144 bytes). Re-run the installer, or copy `tos.img` from the release zip. |
 | **The D-pad does nothing on the desktop** | You are in joystick mode, which only games read. Press **Start** (the label shows MOUSE). |
 | **A game ignores the joystick** | Press **Start** until the label shows JOYSTICK. Most games use the joystick on port 1, which is pad 1. |
-| **Crash with *CPU = 68020* or *Machine = STE*** | You picked the 192 KB TOS (`emutos-192k-*.img`), which only works on an ST with a 68000. Use `tos.img` (256 KB). |
+| **Crash with *Machine = STE* or *Mega STE*** | The TOS doesn't support that machine: 192 KB TOS (1.00–1.04, `emutos-192k-*.img`) is ST only. Use `tos.img` (256 KB EmuTOS) or TOS 1.06/1.62/2.06. |
+| **Memory setting has no effect, or the screen breaks after changing it** | Fixed in v0.1.4: update. The change must cold-restart the ST; a warm reset keeps the old memory layout. |
 | **A game or demo refuses to run** | It may need Atari's original TOS rather than EmuTOS (copy your dump as `tos.img`), or a specific machine (try *Machine = ST*, *Memory = 1 MB*). |
 | **A disk is not seen** | Only raw `.st` images work; convert `.msa` / `.stx` first (e.g. Hatari's `hmsa`). Load it in *Floppy A* and choose *Cold Restart* to boot from it. |
 | **A game cannot save** | Floppies are write-protected by default: set *Write Protect* to *None* (keep a backup of the disk). |
@@ -133,6 +134,8 @@ make -C sim           # needs Icarus Verilog and Verilator
   modifiers) and exact mouse quadrature counts.
 * `video`: `st_video` with the measured PAL/NTSC/mono sync timing — every frame has the scaler mode's
   exact width, height and slot id.
+* `system`: the whole ST (MiSTery) boots a TOS at every RAM size and through RAM changes, and checks the
+  memory size and screen address TOS sets up. `make -C sim system TOS=your_tos.img` tests your own TOS.
 * `osk`: on-screen keyboard navigation, held keys and sticky modifiers; also renders a frame to
   `sim/osk_frame.png` (a copy is in [docs/osk.png](docs/osk.png)).
 
