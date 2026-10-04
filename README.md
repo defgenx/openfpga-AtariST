@@ -3,9 +3,9 @@
 An openFPGA port of [MiSTery](https://github.com/gyurco/MiSTery), Gyorgy Szombathelyi's cycle-accurate
 Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
-> **Status: untested on hardware.** The Pocket-specific modules are simulated (see *Tests*) and every
-> source has passed Verilator lint, but the core has not yet run on a Pocket. Expect the first
-> hardware session to need fixes — the open points are listed under *Known gaps*.
+> **Status: early pre-release.** On a real Pocket the core loads, boots EmuTOS to the GEM desktop and
+> the mouse works. It is still young: if something goes wrong, see [Troubleshooting](#troubleshooting)
+> and please [open an issue](https://github.com/defgenx/openfpga-AtariST/issues).
 
 ## Features
 
@@ -23,17 +23,90 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
 ## Installing
 
-Put the microSD card in your computer and run the installer: double-click `install.bat` on Windows, or
-`./install.sh` on macOS/Linux. It finds the card and copies the core, and asks before replacing any file
-already there. Or unzip the release onto the card by hand. EmuTOS is
-included, so the core boots to the GEM desktop without any other file. See **[INSTALL.md](INSTALL.md)** for disks, original TOS, settings,
-controls and troubleshooting.
+Put the microSD card in your computer and run the installer from the
+[latest release](https://github.com/defgenx/openfpga-AtariST/releases):
+
+| System        | Run                                                          |
+|---------------|--------------------------------------------------------------|
+| Windows       | put `install.bat` and `install.ps1` in one folder, double-click `install.bat` |
+| macOS / Linux | `chmod +x install.sh && ./install.sh`                        |
+
+It finds the Pocket card, copies the core, the bundled EmuTOS and the guide, and offers to eject the
+card. It **asks before replacing any file already on the card** (`[y]es / [N]o / [a]ll / [s]kip all`;
+Enter keeps your file). Or unzip `defgenx.AtariST.zip` onto the card root by hand.
+
+On the Pocket: *openFPGA → Atari ST*. EmuTOS is included, so it boots to the GEM desktop without any
+other file. Add `.st` floppy images to `Assets/atarist/common/` and load them from *Core Settings →
+Floppy A / B*. Full guide: **[INSTALL.md](INSTALL.md)**.
+
+Installer options:
+
+| macOS / Linux        | Windows          | Does                                                   |
+|----------------------|------------------|--------------------------------------------------------|
+| `--dry-run`          | `-DryRun`        | show what would be copied, change nothing              |
+| `--sd /Volumes/NAME` | `-SD E:\`        | install to this card instead of searching for it       |
+| `--reset-settings`   | `-ResetSettings` | also erase the core's saved settings (asks first)      |
 
 ## Controls
 
-See [docs/input.md](docs/input.md). In short: pad 1 is the ST joystick (A fire, B fire 2, X Space,
-Y Return). **Select** opens an on-screen keyboard; **Start** turns the D-pad into the mouse
-(A/L = left click, B/R = right click). A keyboard and mouse plugged into the Dock work as on a real ST.
+No keyboard needed. The pad **starts in mouse mode** for the GEM desktop; **Start** switches to the
+joystick for games and back (a MOUSE / JOYSTICK label confirms it).
+
+| Button     | Mouse mode (default) | Joystick mode            | On-screen keyboard  |
+|------------|----------------------|--------------------------|---------------------|
+| D-pad      | move the pointer     | joystick (ST game port)  | move the key cursor |
+| A          | left click           | fire                     | press the key       |
+| B          | right click          | fire 2                   | close the keyboard  |
+| X / Y      | Space / Return       | Space / Return           | –                   |
+| L / R      | left / right click   | –                        | –                   |
+| **Select** | show the keyboard    | show the keyboard        | close the keyboard  |
+| **Start**  | joystick mode        | mouse mode               | –                   |
+
+On the on-screen keyboard, Ctrl / Shift / Alt are sticky: press Shift, then the letter. In the Dock, a
+USB keyboard and mouse work as on a real ST (Page Up = Help, Page Down = Undo) and an analog stick moves
+the mouse. Details: [docs/input.md](docs/input.md).
+
+## Core settings
+
+On the Pocket: press the Analogue button while the core runs → *Core Settings*.
+
+| Setting            | Values                               | Notes                                                    |
+|--------------------|--------------------------------------|----------------------------------------------------------|
+| Reset ST (warm)    | –                                    | like the reset button on a real ST                       |
+| Cold Restart       | –                                    | clears memory, reloads TOS, restarts from scratch        |
+| Machine            | ST / STE / Mega STE                  | cold restart; STE needs a 256 KB TOS (the default is)    |
+| Memory             | 512 KB … 14 MB (1 MB default)        | cold restart                                             |
+| CPU                | 68000 / 68020                        | cold restart; 68020 needs a 256 KB TOS (the default is)  |
+| Monitor            | Colour / Mono (SM124)                | cold restart; mono is 640×400 high-res software only     |
+| Blitter (ST)       | Off / On                             | the STE and Mega STE always have one                     |
+| YM Stereo          | Off / On                             | spreads the three sound channels left/right              |
+| Write Protect      | A and B / B only / A only / None     | floppies are protected by default — keep backups         |
+| Borders            | Show / Hide                          | hide to fill the screen with the 320×200 / 640×200 area  |
+| Pad Mode           | Mouse / Joystick                     | the mode the pad starts in; Start flips it               |
+| Reset All Settings | –                                    | every setting back to its default, then a cold restart   |
+| TOS / Floppy A / B | file picker                          | a new TOS reloads and restarts; disks swap live          |
+
+Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at the next start.
+
+## Troubleshooting
+
+| What you see | What to do |
+|---|---|
+| **"Load error in 'core'" / "General error"** when starting the core | An old or mixed install. Run the installer again and answer **a** (replace all), or delete `Cores/defgenx.AtariST/` from the card first. |
+| **Bombs, a bus error or a black screen after changing a setting** | *Core Settings → Reset All Settings*. If the menu doesn't help, erase the saved settings: `./install.sh --reset-settings` (Windows: `install.bat -ResetSettings`), or delete `Settings/defgenx.AtariST/` on the card. |
+| **The ST hangs or acts strangely after a crash** | *Core Settings → Cold Restart*. *Reset ST (warm)* keeps memory, like a real ST's reset button. |
+| **Black screen at start** | `Assets/atarist/common/tos.img` is missing or not a raw 192/256 KB TOS (exactly 196,608 or 262,144 bytes). Re-run the installer, or copy `tos.img` from the release zip. |
+| **The D-pad does nothing on the desktop** | You are in joystick mode, which only games read. Press **Start** (the label shows MOUSE). |
+| **A game ignores the joystick** | Press **Start** until the label shows JOYSTICK. Most games use the joystick on port 1, which is pad 1. |
+| **Crash with *CPU = 68020* or *Machine = STE*** | You picked the 192 KB TOS (`emutos-192k-*.img`), which only works on an ST with a 68000. Use `tos.img` (256 KB). |
+| **A game or demo refuses to run** | It may need Atari's original TOS rather than EmuTOS (copy your dump as `tos.img`), or a specific machine (try *Machine = ST*, *Memory = 1 MB*). |
+| **A disk is not seen** | Only raw `.st` images work; convert `.msa` / `.stx` first (e.g. Hatari's `hmsa`). Load it in *Floppy A* and choose *Cold Restart* to boot from it. |
+| **A game cannot save** | Floppies are write-protected by default: set *Write Protect* to *None* (keep a backup of the disk). |
+| **Mono mode: picture off-centre or black** | Mono timing is not yet verified on hardware; switch *Monitor* back to *Colour*. |
+
+When reporting a problem, please say which version (`version` in `Cores/defgenx.AtariST/core.json`), the
+settings you changed, and what is on screen — a photo of a bus-error screen (the `PC` and `addr` values)
+is very useful.
 
 ## Building
 
@@ -65,9 +138,9 @@ make -C sim           # needs Icarus Verilog and Verilator
 
 ## Known gaps
 
-* Not yet run on hardware: SDRAM clock phase, Dock HID field layout and the datatable layout are taken
-  from Analogue's examples and need confirming.
+* Only lightly tested on hardware: Dock keyboard/mouse and floppy writing in particular need confirming.
 * Mono and medium-res horizontal positions are estimated ([docs/video.md](docs/video.md)).
+* No Atari Falcon: it needs about twice the Pocket's FPGA.
 * The RTC is set once at boot and does not tick.
 * No hard disk (ACSI), MIDI, serial/parallel or `.msa`/`.stx` images.
 
