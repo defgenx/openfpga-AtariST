@@ -45,6 +45,9 @@ for core_dir in sorted((ROOT / "Cores").iterdir()):
         for field, lim in [("shortname", 31), ("description", 63), ("author", 31), ("url", 63), ("version", 31), ("date_release", 10)]:
             maxlen(m[field], lim, f"{n}/core.json metadata.{field}")
         check(re.fullmatch(r"\d{4}-\d{2}-\d{2}", m["date_release"]), f"{n}/core.json", "date_release must be YYYY-MM-DD")
+        # the Pocket looks the core up as Cores/<author>.<shortname>
+        check(n == f"{m['author']}.{m['shortname']}", f"{n}/core.json",
+              f"folder must be named {m['author']}.{m['shortname']} (author.shortname)")
         f = c["framework"]
         check(f["target_product"] == "Analogue Pocket", f"{n}/core.json", "target_product")
         check(re.fullmatch(r"\d+\.\d+", f["version_required"]), f"{n}/core.json", "version_required must be major.minor")
