@@ -450,7 +450,6 @@ always @(posedge clk_32) begin
 		state <= (tos_chunk == 0 && !loading_cart) ? S_TOS_HDR : S_TOS_HI;
 	end
 
-	// os_base (long at offset 8) tells 192 KB TOS at $FC0000 from 256 KB TOS at $E00000
 	// Header: os_version at 2-3, os_base at 8-11 (only byte 9 matters: $FC = 192 KB TOS at
 	// $FC0000, else 256 KB at $E00000), "ETOS" at $2C-$2F marks EmuTOS. One byte per 4 clocks.
 	S_TOS_HDR: begin

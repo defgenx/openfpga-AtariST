@@ -202,15 +202,30 @@ try {
     Write-Host ""
     Write-Host "TOS images on the card (Core Settings -> TOS; Machine = Auto runs them as):"
     $own = 0
-    foreach ($dir in "Assets/atarist/common", "Assets/atarist/$Core") {
-        $full = Join-Path $SD $dir
-        if (-not (Test-Path -LiteralPath $full -PathType Container)) { continue }
-        foreach ($f in Get-ChildItem -LiteralPath $full -File -Force | Sort-Object Name) {
-            if ($f.Name.StartsWith("._") -or $f.Extension.ToLower() -notin ".img", ".rom", ".bin", ".tos") { continue }
-            if ($f.Length -eq 196608) { $kb = 192 } elseif ($f.Length -eq 262144) { $kb = 256 } else { continue }
+    $rejects = New-Object System.Collections.Generic.List[string]
+    $root = Join-Path $SD "Assets/atarist"
+    $sdFull = if (Test-Path -LiteralPath $root -PathType Container) { (Resolve-Path -LiteralPath $SD).Path.TrimEnd('\', '/') } else { $null }
+    if ($sdFull) {
+        foreach ($f in Get-ChildItem -LiteralPath $root -Recurse -File -Force | Sort-Object FullName) {
+            if ($f.Name.StartsWith("._")) { continue }
+            $rel = $f.FullName.Substring($sdFull.Length + 1) -replace '\\', '/'
+            $pick = $f.Extension.ToLower() -in ".img", ".rom", ".bin", ".tos"
+            if ($f.Length -eq 196608) { $kb = 192 } elseif ($f.Length -eq 262144) { $kb = 256 } else { $kb = 0 }
+            # floppies, hard disks and cartridges share these extensions: only judge likely TOS files
+            if ($kb -eq 0) {
+                if ($pick -and $f.Name.ToLower().Contains("tos")) { $rejects.Add("${rel}: $($f.Length) bytes, a TOS must be a raw 196,608 or 262,144 byte image") }
+                continue
+            }
             $hdr = New-Object byte[] 48
             $fs = [IO.File]::OpenRead($f.FullName)
             try { [void]$fs.Read($hdr, 0, 48) } finally { $fs.Close() }
+            $osbase = "{0:x2}{1:x2}{2:x2}{3:x2}" -f $hdr[8], $hdr[9], $hdr[10], $hdr[11]
+            if ($hdr[0] -ne 0x60 -or $osbase -notin "00fc0000", "00e00000") {
+                if ($hdr[1] -eq 0x60) { $rejects.Add("${rel}: byte-swapped dump (swap each byte pair)") }
+                else { $rejects.Add("${rel}: $kb KB but no TOS header (maybe not a TOS, or a split hi/lo ROM dump)") }
+                continue
+            }
+            if (-not $pick) { $rejects.Add("${rel}: the TOS picker only lists .img .rom .bin .tos - rename it"); continue }
             $ver = "{0:x2}{1:x2}" -f $hdr[2], $hdr[3]
             if ([Text.Encoding]::ASCII.GetString($hdr, 44, 4) -eq "ETOS") {
                 $name = "EmuTOS"; $machine = if ($kb -eq 256) { "STE" } else { "ST" }
@@ -218,7 +233,6 @@ try {
                 $name = "TOS $($ver.Substring(1,1)).$($ver.Substring(2,2))"
                 $machine = switch ($ver) { "0106" { "STE" } "0162" { "STE" } "0205" { "Mega STE" } default { "ST" } }
             }
-            $rel = "$dir/$($f.Name)"
             $bundled = Join-Path $Src $rel
             if ((Test-Path -LiteralPath $bundled) -and (Get-FileHash -LiteralPath $bundled).Hash -eq (Get-FileHash -LiteralPath $f.FullName).Hash) {
                 $origin = "bundled"
@@ -226,9 +240,13 @@ try {
             Write-Host ("  {0,-42} {1,-10} {2,3} KB  {3,-8} -> {4}" -f $rel, $name, $kb, "($origin)", $machine)
         }
     }
+    if ($rejects.Count -gt 0) {
+        Write-Host "Not usable as TOS:"
+        foreach ($r in $rejects) { Write-Host "  - $r" }
+    }
     if ($own -eq 0) {
-        Write-Host "  Only the bundled EmuTOS is there. For original Atari TOS, copy your own dump"
-        Write-Host "  (a raw 192 or 256 KB image) to Assets/atarist/common/ and pick it as TOS."
+        Write-Host "  None of your own TOS images found. Copy a raw 192 or 256 KB dump to"
+        Write-Host "  Assets/atarist/common/ (.img/.rom/.bin/.tos) and pick it in Core Settings -> TOS."
     }
 
     if ($DryRun) { exit 0 }

@@ -312,6 +312,18 @@ initial begin
 	$display("cold restart: %0d words cleared, %0d TOS words reloaded", clear_seen, words_seen);
 	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2 + 65536) begin $display("cold restart incomplete"); errors = errors + 1; end
 
+	// a new TOS picked in the menu (Dataslot Update for slot 0): reloaded without any restart request
+	clear_seen = 0; words_seen = 0;
+	@(posedge clk_74a); ds_update_id <= 0; ds_update_size <= TOS_SIZE; ds_update <= 1;
+	@(posedge clk_74a); ds_update <= 0;
+	fork : wait_tos
+		begin wait (!tos_done); disable wait_tos; end
+		begin repeat (5000) @(posedge clk_32); $display("new TOS picked: no reload"); errors = errors + 1; disable wait_tos; end
+	join
+	wait (tos_done);
+	$display("new TOS picked: %0d words cleared, %0d TOS words reloaded", clear_seen, words_seen);
+	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2 + 65536) begin $display("TOS reload incomplete"); errors = errors + 1; end
+
 	if (errors == 0) $display("PASS");
 	else $display("FAIL: %0d errors", errors);
 	$finish;
