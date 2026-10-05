@@ -188,25 +188,6 @@
         ]
       },
       {
-        "name": "Screen Fit",
-        "id": 17,
-        "type": "list",
-        "enabled": true,
-        "persist": true,
-        "address": "0x80000040",
-        "defaultval": 0,
-        "options": [
-          {
-            "value": 0,
-            "name": "Original Aspect"
-          },
-          {
-            "value": 1,
-            "name": "Fill Pocket Screen"
-          }
-        ]
-      },
-      {
         "name": "Pad Mode",
         "id": 10,
         "type": "list",

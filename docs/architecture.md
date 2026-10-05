@@ -102,7 +102,6 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x80000034`  | STE Joypad Ports | any write: presses F11 (IKBD port switch) |
 | `0x80000038`  | Link port      | 0 off, 1 MIDI, 2 serial                  |
 | `0x8000003C`  | Cubase dongle  | 0 off, 1 on                              |
-| `0x80000040`  | Screen fit     | 0 original aspect, 1 fill (10:9 scaler slots, see `video.md`) |
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
 

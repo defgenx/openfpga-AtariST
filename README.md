@@ -90,7 +90,6 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 | YM Stereo          | Off / On                             | spreads the three sound channels left/right              |
 | Write Protect      | A and B / B only / A only / None     | floppies are protected by default — keep backups         |
 | Borders            | Show / Hide                          | hide to fill the screen with the 320×200 / 640×200 area  |
-| Screen Fit         | Original Aspect / Fill Pocket Screen | *Fill* stretches the picture over the whole 1600×1440 handheld screen (no black bars, slightly squeezed); use *Original* on a TV in the Dock |
 | Pad Mode           | Mouse / Joystick / Keys              | the mode the pad starts in; Start cycles them            |
 | Mouse Speed        | Slow / Normal / Fast                 | speed of the D-pad mouse                                 |
 | Reset All Settings | –                                    | every setting back to its default, then a cold restart   |

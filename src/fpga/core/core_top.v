@@ -524,7 +524,6 @@ reg  [1:0] cfg_mouse_spd = 2'd1; // 0 slow, 1 normal, 2 fast (D-pad mouse)
 reg        cfg_stepad_t = 1'b0;  // toggles on "STE Joypad Ports"
 reg  [1:0] cfg_linkmode = 2'd0;  // link port: 0 off, 1 MIDI, 2 serial (RS-232 at 3.3 V)
 reg        cfg_cubase   = 1'b0;  // Cubase 2/3 dongle on the cartridge port
-reg        cfg_fit      = 1'b0;  // 0 original aspect, 1 fill the Pocket screen (10:9)
 
 always @(posedge clk_74a) begin
 	if (bridge_wr && bridge_addr[31:8] == 24'h800000) begin
@@ -542,12 +541,11 @@ always @(posedge clk_74a) begin
 		8'h34: cfg_stepad_t  <= ~cfg_stepad_t;
 		8'h38: cfg_linkmode  <= bridge_wr_data[1:0];
 		8'h3C: cfg_cubase    <= bridge_wr_data[0];
-		8'h40: cfg_fit       <= bridge_wr_data[0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
 			cfg_model <= 3'd4; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
 			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmode <= 2'd1;
-			cfg_mouse_spd <= 2'd1; cfg_linkmode <= 2'd0; cfg_cubase <= 1'b0; cfg_fit <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
+			cfg_mouse_spd <= 2'd1; cfg_linkmode <= 2'd0; cfg_cubase <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
 		end
 		default: ;
 		endcase
@@ -564,17 +562,15 @@ always @(posedge clk_74a) begin
 	8'h30: cfg_bridge_rd_data <= cfg_mouse_spd;
 	8'h38: cfg_bridge_rd_data <= cfg_linkmode;
 	8'h3C: cfg_bridge_rd_data <= cfg_cubase;
-	8'h40: cfg_bridge_rd_data <= cfg_fit;
 	default: cfg_bridge_rd_data <= 0;
 	endcase
 end
 
 // quasi-static settings, synchronised as a bundle
-wire [23:0] cfg_s;
-synch_3 #(.WIDTH(24)) s_cfg(
-	{cfg_fit, cfg_cubase, cfg_linkmode, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
+wire [22:0] cfg_s;
+synch_3 #(.WIDTH(23)) s_cfg(
+	{cfg_cubase, cfg_linkmode, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
 	cfg_s, clk_32);
-wire       fit_32       = cfg_s[23];
 wire       cubase_32    = cfg_s[22];
 wire [1:0] linkmode_32  = cfg_s[21:20];
 wire       linkmidi_32  = linkmode_32 == 2'd1;
@@ -1186,7 +1182,6 @@ assign video_rgb_clock_90 = clk_32_90;
 st_video st_video (
 	.clk        ( clk_32 ),
 	.borders    ( borders_32 ),
-	.fill       ( fit_32 ),
 	.r          ( st_r ),
 	.g          ( st_g ),
 	.b          ( st_b ),

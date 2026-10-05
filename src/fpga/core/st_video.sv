@@ -13,7 +13,6 @@
 module st_video (
 	input  wire        clk,         // clk_32, also the APF video clock
 	input  wire        borders,     // 1: show part of the border area
-	input  wire        fill,        // 1: scaler slots that fill the Pocket screen (10:9)
 
 	input  wire  [3:0] r,
 	input  wire  [3:0] g,
@@ -36,9 +35,6 @@ localparam [2:0] SLOT_PAL_FULL    = 3'd1;
 localparam [2:0] SLOT_NTSC_BORDER = 3'd2;
 localparam [2:0] SLOT_NTSC_FULL   = 3'd3;
 localparam [2:0] SLOT_MONO        = 3'd4;
-localparam [2:0] SLOT_FILL_BORDER = 3'd5;   // 704x240, PAL or NTSC
-localparam [2:0] SLOT_FILL_FULL   = 3'd6;   // 640x200, PAL or NTSC
-localparam [2:0] SLOT_FILL_MONO   = 3'd7;
 
 localparam MODE_PAL = 2'd0, MODE_NTSC = 2'd1, MODE_MONO = 2'd2;
 
@@ -72,11 +68,6 @@ always @(*) begin
 		end
 	endcase
 end
-
-// same window, stretched to the handheld screen
-wire [2:0] out_slot = !fill ? slot :
-                      slot == SLOT_MONO ? SLOT_FILL_MONO :
-                      (slot == SLOT_PAL_BORDER || slot == SLOT_NTSC_BORDER) ? SLOT_FILL_BORDER : SLOT_FILL_FULL;
 
 wire in_window = (x >= x0) && (x < x1) && (y >= y0) && (y < y1);
 wire [11:0] wx = x - x0;
@@ -116,7 +107,7 @@ always @(posedge clk) begin
 	if (in_window)
 		video_rgb <= (blank_n | monomode) ? {r, r, g, g, b, b} : 24'h000000;
 	else if (video_de)
-		video_rgb <= {8'h00, out_slot, 13'h0000};   // end of line: scaler slot select
+		video_rgb <= {8'h00, slot, 13'h0000};   // end of line: scaler slot select
 	else
 		video_rgb <= 24'h000000;
 end

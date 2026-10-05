@@ -39,7 +39,7 @@ wire [23:0] st_rgb, rgb;
 wire st_de, st_skip, st_hs, st_vs, de, skip, hs, vs;
 // ST picture: colour bars so the overlay edges are visible
 wire [3:0] bar = hx[9:6];
-st_video stv (.clk(clk), .borders(1'b1), .fill(1'b0), .r(bar), .g(~bar), .b({bar[0], 3'b000}),
+st_video stv (.clk(clk), .borders(1'b1), .r(bar), .g(~bar), .b({bar[0], 3'b000}),
 	.hsync_n(!(hx < 160)), .vsync_n(!(vy < 3)), .blank_n(1'b1), .monomode(1'b0),
 	.video_rgb(st_rgb), .video_de(st_de), .video_skip(st_skip), .video_hs(st_hs), .video_vs(st_vs));
 osk_overlay #(.FONT_FILE("../src/fpga/core/osk_font.hex")) ovl (.clk(clk), .visible(visible),

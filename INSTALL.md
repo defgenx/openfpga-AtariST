@@ -120,7 +120,6 @@ Useful settings (*Core Settings*):
 | Monitor       | Colour, or Mono for 640×400 high-res software             |
 | Pad Mode      | Mouse (default, for the desktop), Joystick or Keys        |
 | Borders       | Show or hide the screen borders                           |
-| Screen Fit    | *Fill Pocket Screen* stretches the picture over the whole handheld screen |
 | Reset ST (warm) | Like the reset button on a real ST                      |
 | Cold Restart  | Clears memory, reloads TOS and restarts from scratch      |
 | Reset All Settings | Puts every setting back to its default, then a cold restart |

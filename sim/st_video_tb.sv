@@ -12,7 +12,6 @@ always #15.58 clk = ~clk;
 reg  [11:0] line_len = 2048, hs_w = 160;
 reg   [9:0] frame_lines = 313, vs_lines = 3;
 reg         borders = 1;
-reg         fill = 0;
 reg  [11:0] hx = 0;
 reg   [9:0] vy = 0;
 wire hsync_n = !(hx < hs_w);
@@ -31,7 +30,7 @@ end
 wire [23:0] rgb;
 wire de, skip, hs, vs;
 st_video dut (
-	.clk(clk), .borders(borders), .fill(fill),
+	.clk(clk), .borders(borders),
 	.r(hx[3:0]), .g(4'h0), .b(4'h0),
 	.hsync_n(hsync_n), .vsync_n(vsync_n), .blank_n(blank_n), .monomode(monomode),
 	.video_rgb(rgb), .video_de(de), .video_skip(skip), .video_hs(hs), .video_vs(vs)
@@ -67,8 +66,8 @@ always @(posedge clk) begin
 end
 
 task run_mode(input [8*12-1:0] name, input integer ll, input integer hw, input integer fl, input integer vl,
-              input integer w, input integer h, input integer slot, input bit brd, input bit fl_on = 0);
-	line_len = ll; hs_w = hw; frame_lines = fl; vs_lines = vl; borders = brd; fill = fl_on;
+              input integer w, input integer h, input integer slot, input bit brd);
+	line_len = ll; hs_w = hw; frame_lines = fl; vs_lines = vl; borders = brd;
 	exp_w = w; exp_h = h; exp_slot = slot;
 	frames = 0;
 	wait (frames == 5);
@@ -82,10 +81,6 @@ initial begin
 	run_mode("NTSC border", 2032, 160, 263, 3, 704, 240, 2, 1);
 	run_mode("NTSC full",   2032, 160, 263, 3, 640, 200, 3, 0);
 	run_mode("Mono",         896,  96, 501, 1, 672, 400, 4, 1);
-	// Screen Fit = Fill: same windows, 10:9 scaler slots
-	run_mode("PAL fill b",  2048, 160, 313, 3, 704, 240, 5, 1, 1);
-	run_mode("NTSC fill",   2032, 160, 263, 3, 640, 200, 6, 0, 1);
-	run_mode("Mono fill",    896,  96, 501, 1, 672, 400, 7, 1, 1);
 	if (errors == 0) $display("PASS"); else $display("FAIL: %0d errors", errors);
 	$finish;
 end
