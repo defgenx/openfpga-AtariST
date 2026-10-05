@@ -575,12 +575,14 @@ wire       cubase_32    = cfg_s[22];
 wire [1:0] linkmode_32  = cfg_s[21:20];
 wire       linkmidi_32  = linkmode_32 == 2'd1;
 
-// Machine and RAM follow the TOS so the two can't disagree: TOS 1.06/1.62 need an STE,
-// TOS 2.05 a Mega STE, everything else (TOS 1.0x, 2.06, EmuTOS) runs as an ST; original
-// TOS sizes at most 4 MB. The header is parsed while the ST is held in reset.
+// Machine and RAM follow the TOS so the two can't disagree: TOS 1.06/1.62 and 256 KB
+// EmuTOS run as an STE, TOS 2.05 as a Mega STE, everything else (TOS 1.0x, 2.06, 192 KB
+// EmuTOS) as an ST; original TOS sizes at most 4 MB. The header is parsed while the ST
+// is held in reset. The installer prints the same table; keep the two in sync.
 wire [15:0] tos_ver;
 wire        tos_emutos;
-wire [1:0]  tos_machine = tos_emutos ? 2'd0 :
+wire        tos_256k;
+wire [1:0]  tos_machine = tos_emutos ? (tos_256k ? 2'd1 : 2'd0) :
                           (tos_ver == 16'h0106 || tos_ver == 16'h0162) ? 2'd1 :
                           (tos_ver == 16'h0205) ? 2'd2 : 2'd0;
 wire [1:0]  model_32 = model_sel_32 == 3'd4 ? tos_machine : model_sel_32[1:0];
@@ -616,6 +618,8 @@ reg        reset_t_d = 1'b0;
 reg        cold_t_d  = 1'b0;
 reg [15:0] reset_hold = 0;
 reg        cold_req = 1'b0;
+reg        warm_req = 1'b0;
+wire       warm_busy;
 wire [5:0] machine = {model_32, mem_32, mono_32};
 
 always @(posedge clk_32) begin
@@ -623,11 +627,12 @@ always @(posedge clk_32) begin
 	reset_t_d <= reset_t_32;
 	cold_t_d  <= cold_t_32;
 	cold_req  <= (machine != machine_d) || (cold_t_32 != cold_t_d);
+	warm_req  <= reset_t_32 != reset_t_d;
 	if (reset_hold != 0) reset_hold <= reset_hold - 16'd1;
 	if (reset_t_32 != reset_t_d) reset_hold <= 16'hFFFF;
 end
 
-wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0);
+wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0) | warm_busy;
 
 wire [31:0] system_ctrl = {
 	1'b0,               // 31
@@ -716,6 +721,7 @@ st_media media (
 	.target_dataslot_bridgeaddr ( target_dataslot_bridgeaddr ),
 	.target_dataslot_length     ( target_dataslot_length ),
 	.target_dataslot_done       ( target_dataslot_done ),
+	.target_dataslot_err        ( target_dataslot_err ),
 
 	.dataslot_update            ( dataslot_update ),
 	.dataslot_update_id         ( dataslot_update_id ),
@@ -725,11 +731,14 @@ st_media media (
 	.datatable_q                ( datatable_q ),
 
 	.cold_req                   ( cold_req ),
+	.warm_req                   ( warm_req ),
+	.warm_busy                  ( warm_busy ),
 	.tos_done                   ( tos_done ),
 	.load_cart                  ( load_cart ),
 	.load_pct                   ( load_pct ),
 	.tos_ver                    ( tos_ver ),
 	.tos_emutos                 ( tos_emutos ),
+	.tos_256k                   ( tos_256k ),
 	.data_download              ( data_download ),
 	.data_addr                  ( data_addr ),
 	.data_in_reg                ( media_data_in_reg ),

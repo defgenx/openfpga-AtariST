@@ -60,7 +60,9 @@ If you have an original TOS dump (192 KB TOS 1.00–1.04 or 256 KB TOS 1.06/1.62
 `.bin` or `.tos`), copy it to `Assets/atarist/common/` as `tos.img`, replacing the EmuTOS one:
 
 Leave *Machine* on **Auto** (the default): the core reads the TOS version and picks the machine it
-needs, and caps memory at 4 MB for original Atari TOS. If you pick a machine yourself, it must match:
+needs (the bundled 256 KB EmuTOS runs as an STE, the 192 KB ones as an ST), and caps memory at 4 MB
+for original Atari TOS. At the end, the installer lists every TOS on the card and the machine Auto
+picks for it. If you pick a machine yourself, it must match:
 
 | Machine setting | Original TOS that works |
 |-----------------|-------------------------|
@@ -120,7 +122,7 @@ Useful settings (*Core Settings*):
 | Monitor       | Colour, or Mono for 640×400 high-res software             |
 | Pad Mode      | Mouse (default, for the desktop), Joystick or Keys        |
 | Borders       | Show or hide the screen borders                           |
-| Reset ST (warm) | Like the reset button on a real ST                      |
+| Reset ST (warm) | Like the reset button on a real ST; TOS always boots again, even if a game hooked the reset |
 | Cold Restart  | Clears memory, reloads TOS and restarts from scratch      |
 | Reset All Settings | Puts every setting back to its default, then a cold restart |
 

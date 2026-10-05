@@ -193,6 +193,44 @@ try {
         foreach ($s in $kept) { Write-Host "  - $s" }
         if (-not $Interactive -and -not $DryRun) { Write-Host "Run the script in a console to be asked about replacing them." }
     }
+
+    # -----------------------------------------------------------------------
+    # 3b. TOS images on the card, and the machine Machine = Auto runs each one as
+    #     (same rule as tos_machine in src/fpga/core/core_top.v)
+    # -----------------------------------------------------------------------
+
+    Write-Host ""
+    Write-Host "TOS images on the card (Core Settings -> TOS; Machine = Auto runs them as):"
+    $own = 0
+    foreach ($dir in "Assets/atarist/common", "Assets/atarist/$Core") {
+        $full = Join-Path $SD $dir
+        if (-not (Test-Path -LiteralPath $full -PathType Container)) { continue }
+        foreach ($f in Get-ChildItem -LiteralPath $full -File -Force | Sort-Object Name) {
+            if ($f.Name.StartsWith("._") -or $f.Extension.ToLower() -notin ".img", ".rom", ".bin", ".tos") { continue }
+            if ($f.Length -eq 196608) { $kb = 192 } elseif ($f.Length -eq 262144) { $kb = 256 } else { continue }
+            $hdr = New-Object byte[] 48
+            $fs = [IO.File]::OpenRead($f.FullName)
+            try { [void]$fs.Read($hdr, 0, 48) } finally { $fs.Close() }
+            $ver = "{0:x2}{1:x2}" -f $hdr[2], $hdr[3]
+            if ([Text.Encoding]::ASCII.GetString($hdr, 44, 4) -eq "ETOS") {
+                $name = "EmuTOS"; $machine = if ($kb -eq 256) { "STE" } else { "ST" }
+            } else {
+                $name = "TOS $($ver.Substring(1,1)).$($ver.Substring(2,2))"
+                $machine = switch ($ver) { "0106" { "STE" } "0162" { "STE" } "0205" { "Mega STE" } default { "ST" } }
+            }
+            $rel = "$dir/$($f.Name)"
+            $bundled = Join-Path $Src $rel
+            if ((Test-Path -LiteralPath $bundled) -and (Get-FileHash -LiteralPath $bundled).Hash -eq (Get-FileHash -LiteralPath $f.FullName).Hash) {
+                $origin = "bundled"
+            } else { $origin = "yours"; $own++ }
+            Write-Host ("  {0,-42} {1,-10} {2,3} KB  {3,-8} -> {4}" -f $rel, $name, $kb, "($origin)", $machine)
+        }
+    }
+    if ($own -eq 0) {
+        Write-Host "  Only the bundled EmuTOS is there. For original Atari TOS, copy your own dump"
+        Write-Host "  (a raw 192 or 256 KB image) to Assets/atarist/common/ and pick it as TOS."
+    }
+
     if ($DryRun) { exit 0 }
 
     # -----------------------------------------------------------------------

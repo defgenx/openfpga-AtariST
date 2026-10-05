@@ -54,6 +54,10 @@ one sector at a time. With target commands the core asks for exactly what it can
 
 Bridge buffers: read buffer `0x1000_0000`–`0x1000_3FFF` (16 KB), write buffer `0x1000_8000`–`0x1000_81FF`.
 
+APF answers every target command with a result code. A non-zero code means the read buffer was not
+filled (or the write not done), so the engine sends the same command again after ~1 ms, up to 7 times,
+before acknowledging it. Acknowledging a failed read would hand the FDC the previous sector's bytes.
+
 Clock domains: the command engine runs on `clk_74a`, everything facing MiSTery on `clk_32`. Requests cross
 as a toggle handshake whose parameters are held stable until the acknowledge toggle returns.
 
@@ -87,9 +91,14 @@ the core holds. Changing machine, RAM, CPU or monitor triggers a **cold restart*
 in reset, zeroes `$0`–`$FFF` (TOS's memvalid magic at `$420`/`$43A`/`$51A`) and reloads TOS. A warm
 reset would keep the magic, and TOS would skip memory sizing and keep a stale memory configuration.
 
+*Reset ST (warm)* keeps memvalid but has `st_media` zero `resvalid`/`resvector` (`$426`–`$42D`) while the
+ST is held in reset (`warm_busy`). With `resvalid` = `$31415926`, TOS jumps to `resvector` on reset instead
+of booting, so a game's reset handler would swallow the reset and the disk in drive A would never be
+booted. `sim/system` (`+hook`, `+warmclear`) shows both: the CPU stuck in the handler, then TOS booting.
+
 | Address       | Setting        | Values                                   |
 |---------------|----------------|------------------------------------------|
-| `0x80000000`  | Reset ST (warm) | any write                               |
+| `0x80000000`  | Reset ST (warm) | any write: zeroes `$426`–`$42D`, then resets |
 | `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo (STEroids), 4 Auto (default) |
 | `0x80000008`  | Memory         | 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M    |
 | `0x8000000C`  | Monitor        | 0 colour, 1 mono                         |
@@ -108,9 +117,11 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 ## TOS / machine sync
 
 While loading TOS, `st_media` reads the header: `os_version` (offset 2) and EmuTOS's `ETOS` magic
-(offset `$2C`). With *Machine = Auto*, `core_top` maps TOS 1.06/1.62 to the STE, TOS 2.05 to the Mega
-STE and everything else (TOS 1.0x, 2.06, any EmuTOS) to the ST; for original TOS the RAM setting is
+(offset `$2C`). With *Machine = Auto*, `core_top` maps TOS 1.06/1.62 and 256 KB EmuTOS to the STE, TOS 2.05
+to the Mega STE and everything else (TOS 1.0x, 2.06, 192 KB EmuTOS) to the ST; for original TOS the RAM setting is
 capped at 4 MB. The ST is in reset during the load, so it starts with the matching configuration.
+`install.sh` / `install.ps1` read the same header fields from every TOS image on the card and print the
+machine Auto will pick, marking the bundled images apart from the user's own.
 
 ## ACSI hard disks
 

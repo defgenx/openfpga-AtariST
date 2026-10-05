@@ -207,6 +207,41 @@ if [ ${#kept[@]} -gt 0 ]; then
 	for s in "${kept[@]}"; do say "  - $s"; done
 	[ $INTERACTIVE -eq 0 ] && [ $DRY_RUN -eq 0 ] && say "Run the script in a terminal to be asked about replacing them."
 fi
+
+# ---------------------------------------------------------------------------
+# 3b. TOS images on the card, and the machine Machine = Auto runs each one as
+#     (same rule as tos_machine in src/fpga/core/core_top.v)
+# ---------------------------------------------------------------------------
+
+hexbytes() { od -An -tx1 -j "$2" -N "$3" "$1" | tr -d ' \n'; }
+say ""
+say "TOS images on the card (Core Settings -> TOS; Machine = Auto runs them as):"
+own=0
+for dir in "Assets/atarist/common" "Assets/atarist/$CORE"; do
+	[ -d "$SD/$dir" ] || continue
+	for f in "$SD/$dir"/*; do
+		[ -f "$f" ] || continue
+		case "$(basename "$f")" in ._*) continue ;; esac
+		case "$(printf '%s' "${f##*.}" | tr 'A-Z' 'a-z')" in img|rom|bin|tos) ;; *) continue ;; esac
+		size=$(wc -c < "$f" | tr -d ' ')
+		case "$size" in 196608) kb=192 ;; 262144) kb=256 ;; *) continue ;; esac
+		ver="$(hexbytes "$f" 2 2)"
+		if [ "$(hexbytes "$f" 44 4)" = "45544f53" ]; then
+			name="EmuTOS"; [ $kb -eq 256 ] && machine="STE" || machine="ST"
+		else
+			name="TOS ${ver:1:1}.${ver:2:2}"
+			case "$ver" in 0106|0162) machine="STE" ;; 0205) machine="Mega STE" ;; *) machine="ST" ;; esac
+		fi
+		rel="$dir/$(basename "$f")"
+		if [ -f "$SRC/$rel" ] && cmp -s "$SRC/$rel" "$f"; then origin="bundled"; else origin="yours"; own=$((own + 1)); fi
+		say "$(printf '  %-42s %-10s %3s KB  %-8s -> %s' "$rel" "$name" "$kb" "($origin)" "$machine")"
+	done
+done
+if [ $own -eq 0 ]; then
+	say "  Only the bundled EmuTOS is there. For original Atari TOS, copy your own dump"
+	say "  (a raw 192 or 256 KB image) to Assets/atarist/common/ and pick it as TOS."
+fi
+
 [ $DRY_RUN -eq 1 ] && exit 0
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,8 @@
 //   +tos=<hex> +mem=<0..5> +ms=<emulated milliseconds> [+warm=<mem2>]
 // +warm reboots once with a different RAM size WITHOUT clearing low RAM (old v0.1.3 path);
 // +cold does the same but clears $0-$FFF first (the v0.1.4 cold restart).
+// +hook installs a reset handler (resvalid/resvector -> a bra.s * loop at $600) before the
+// warm reset, as a game would; +warmclear zeroes $426-$42D in reset, as "Reset ST" does.
 `timescale 1ps/1ps
 
 module st_system_tb;
@@ -160,13 +162,20 @@ initial begin
 	report("boot");
 
 	if ($value$plusargs("warm=%d", m2) || $value$plusargs("cold=%d", m2)) begin
+		if ($test$plusargs("hook")) begin
+			atarist.sdram.mem['h213] = 16'h3141; atarist.sdram.mem['h214] = 16'h5926;   // resvalid
+			atarist.sdram.mem['h215] = 16'h0000; atarist.sdram.mem['h216] = 16'h0600;   // resvector
+			atarist.sdram.mem['h300] = 16'h60FE;                                        // bra.s *
+		end
 		st_reset = 1;
 		mem_sel = m2[2:0];
 		if ($test$plusargs("cold")) for (i = 0; i < 2048; i = i + 1) atarist.sdram.mem[i] = 16'h0000;
+		if ($test$plusargs("warmclear")) for (i = 'h213; i < 'h217; i = i + 1) atarist.sdram.mem[i] = 16'h0000;
 		repeat (100000) @(posedge clk_32);
 		st_reset = 0;
 		run_ms(ms);
 		report($test$plusargs("cold") ? "cold reboot" : "warm reboot");
+		$display("[warm reboot] cpu addr=$%06x resvalid=%08x", {atarist.fx68_a, 1'b0}, L(24'h426));
 	end
 	$finish;
 end
