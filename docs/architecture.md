@@ -44,7 +44,8 @@ one sector at a time. With target commands the core asks for exactly what it can
 2. It reads TOS in 16 KB chunks. From chunk 0 it checks `os_base` (the long at offset 8): `$FC` means a 192 KB TOS at `$FC0000`,
    anything else a 256 KB TOS at `$E00000`. It then streams the ROM into SDRAM through MiSTery's
    `data_in_strobe_rom` port, one word every 32 clocks (MiSTery takes one per 16-clock bus slot),
-   holding the ST in reset (`tos_done` low) behind the loading screen. Restart requests that arrive
+   holding the ST in reset (`tos_done` low) behind the loading screen, which covers the whole time
+   `tos_done` is low, including the wait for `dataslot_allcomplete`. Restart requests that arrive
    while TOS is loading are dropped: the ST is still in reset, so new settings apply when it starts.
 3. FDC `sd_rd`: Dataslot Read of `lba*512` from slot 1 or 2 into the read buffer, then 512 bytes into the
    FDC's sector buffer. `sd_wr`: the FDC buffer is copied to the write buffer, then Dataslot Write.
@@ -101,6 +102,7 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x80000034`  | STE Joypad Ports | any write: presses F11 (IKBD port switch) |
 | `0x80000038`  | Link port      | 0 off, 1 MIDI, 2 serial                  |
 | `0x8000003C`  | Cubase dongle  | 0 off, 1 on                              |
+| `0x80000040`  | Screen fit     | 0 original aspect, 1 fill (10:9 scaler slots, see `video.md`) |
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
 

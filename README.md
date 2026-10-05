@@ -11,7 +11,7 @@ Atari ST/STE/Mega STE core for the MiST board, to the Analogue Pocket.
 
 * ST, STE, Mega STE (16 MHz) and STE Turbo (16 MHz STE with a fast bus, MiSTery's *STEroids*) machines, 512 KB – 14 MB RAM, cycle-accurate 68000 (FX68K)
 * TOS and machine stay in sync: *Machine = Auto* reads the TOS version and picks the ST model it needs
-* A loading screen with a progress bar while TOS loads
+* A loading screen with a progress bar while TOS loads, and a **DISK A / DISK B / HDD** badge while the ST reads a disk
 * Ready to run: [EmuTOS](https://emutos.sourceforge.io) (free TOS replacement) is bundled; any original
   192 KB or 256 KB TOS works too, and picking another TOS from the menu reloads it
 * Two floppy drives using `.st` images, read **and write**, swappable from the Pocket menu
@@ -90,6 +90,7 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 | YM Stereo          | Off / On                             | spreads the three sound channels left/right              |
 | Write Protect      | A and B / B only / A only / None     | floppies are protected by default — keep backups         |
 | Borders            | Show / Hide                          | hide to fill the screen with the 320×200 / 640×200 area  |
+| Screen Fit         | Original Aspect / Fill Pocket Screen | *Fill* stretches the picture over the whole 1600×1440 handheld screen (no black bars, slightly squeezed); use *Original* on a TV in the Dock |
 | Pad Mode           | Mouse / Joystick / Keys              | the mode the pad starts in; Start cycles them            |
 | Mouse Speed        | Slow / Normal / Fast                 | speed of the D-pad mouse                                 |
 | Reset All Settings | –                                    | every setting back to its default, then a cold restart   |
@@ -107,6 +108,7 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | What you see | What to do |
 |---|---|
 | **"Load error in 'core'" / "General error"** when starting the core | An old or mixed install. Run the installer again and answer **a** (replace all), or delete `Cores/defgenx.AtariST/` from the card first. |
+| **A white or black screen for a while after picking a disk** | The ST is reading the floppy at real-drive speed; the red *DISK A* badge (top right) shows it is working. Games often take 10–30 s to boot, as on a real ST. |
 | **Bombs, a bus error or a black screen after changing a setting** | *Core Settings → Reset All Settings*. If the menu doesn't help, erase the saved settings: `./install.sh --reset-settings` (Windows: `install.bat -ResetSettings`), or delete `Settings/defgenx.AtariST/` on the card. |
 | **The ST hangs or acts strangely after a crash** | *Core Settings → Cold Restart*. *Reset ST (warm)* keeps memory, like a real ST's reset button. |
 | **Black screen at start** | `Assets/atarist/common/tos.img` is missing or not a raw 192/256 KB TOS (exactly 196,608 or 262,144 bytes). Re-run the installer, or copy `tos.img` from the release zip. |

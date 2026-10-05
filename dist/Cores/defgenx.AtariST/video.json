@@ -41,6 +41,30 @@
         "aspect_h": 25,
         "rotation": 0,
         "mirror": 0
+      },
+      {
+        "width": 704,
+        "height": 240,
+        "aspect_w": 10,
+        "aspect_h": 9,
+        "rotation": 0,
+        "mirror": 0
+      },
+      {
+        "width": 640,
+        "height": 200,
+        "aspect_w": 10,
+        "aspect_h": 9,
+        "rotation": 0,
+        "mirror": 0
+      },
+      {
+        "width": 672,
+        "height": 400,
+        "aspect_w": 10,
+        "aspect_h": 9,
+        "rotation": 0,
+        "mirror": 0
       }
     ],
     "display_modes": [

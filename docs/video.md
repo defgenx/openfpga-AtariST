@@ -33,6 +33,13 @@ first pixel can be shifted out). Windows are therefore placed on the measured pi
 | 2    | NTSC, borders       | 448–1855, 17–256           | 704×240 |
 | 3    | NTSC, no borders    | 512–1791, 37–236           | 640×200 |
 | 4    | Mono                | 177–848, 37–436            | 672×400 |
+| 5    | PAL/NTSC, borders, fill | as slot 0 / 2          | 704×240 |
+| 6    | PAL/NTSC, no borders, fill | as slot 1 / 3       | 640×200 |
+| 7    | Mono, fill          | as slot 4                  | 672×400 |
+
+*Screen Fit = Fill* keeps the window and only switches to slots 5–7, whose aspect is 10:9, the
+Pocket's 1600×1440 panel, so the scaler stretches the picture over the whole screen. APF allows 8
+scaler slots, and all 8 are used.
 
 The slot is announced at the end of each line's active area (`video_rgb = {8'h00, slot, 13'h0}` on the
 first clock with DE low), the convention used by other Pocket cores.

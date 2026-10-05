@@ -108,7 +108,9 @@ module osk_overlay #(
 	input  wire  [2:0] mods,
 	input  wire        badge,        // show the pad-mode label
 	input  wire  [1:0] badge_mode,   // 0 JOYSTICK, 1 MOUSE, 2 KEYS
-	input  wire        loading,      // TOS / cartridge being loaded: ST held in reset
+	input  wire        disk,         // drive light: show the disk badge
+	input  wire  [1:0] disk_id,      // 0 floppy A, 1 floppy B, 2 hard disk
+	input  wire        loading,      // ST held in reset until TOS / cartridge are loaded
 	input  wire        load_cart,
 	input  wire [11:0] load_pct,     // 3 BCD digits
 
@@ -178,6 +180,15 @@ function automatic [6:0] badge_char(input [1:0] mode, input [2:0] pos);
 	badge_char = s[(7 - pos) * 8 +: 7];
 endfunction
 
+// disk badge, top right: 8 characters ending 8 pixels from the right edge
+wire [9:0]  dx = px - (width - 10'd72);
+wire        in_disk = disk && in_de && (dx < 10'd64) && (by < 10'd8) && (width >= 10'd80);
+function automatic [6:0] disk_char(input [1:0] id, input [2:0] pos);
+	reg [63:0] s;
+	s = id == 2'd2 ? "  HDD   " : id == 2'd1 ? " DISK B " : " DISK A ";
+	disk_char = s[(7 - pos) * 8 +: 7];
+endfunction
+
 // loading screen: "LOADING TOS  42%" in 2x text (16 chars, 256 px) centred, progress bar below
 wire [9:0]  lx = px - ((width - 10'd256) >> 1);
 wire [9:0]  ly = py - ((height >> 1) - 10'd16);
@@ -199,17 +210,19 @@ endfunction
 // stage 1: glyph row lookup
 reg  [7:0]  glyph;
 reg  [2:0]  bit_s1;
-reg         in_kb_s1, badge_s1, text_s1, edge_s1, cursor_s1, latched_s1;
+reg         in_kb_s1, badge_s1, disk_s1, text_s1, edge_s1, cursor_s1, latched_s1;
 reg         loading_s1, ltext_s1, lbar_s1, lfill_s1;
 reg [23:0]  rgb_s1;
 reg         de_s1, skip_s1, hs_s1, vs_s1;
 
 always @(posedge clk) begin
 	glyph      <= load_text ? font[{load_char(load_cart, load_pct, lx[7:4]), ly[3:1]}] :
-	              in_badge  ? font[{badge_char(badge_mode, bx[5:3]), by[2:0]}]
+	              in_badge  ? font[{badge_char(badge_mode, bx[5:3]), by[2:0]}] :
+	              in_disk   ? font[{disk_char(disk_id, dx[5:3]), by[2:0]}]
 	                        : font[{osk_char(row, col, tx[4:3]), ty[2:0]}];
-	bit_s1     <= load_text ? lx[3:1] : in_badge ? bx[2:0] : tx[2:0];
-	in_kb_s1   <= in_kb | in_badge;
+	bit_s1     <= load_text ? lx[3:1] : in_badge ? bx[2:0] : in_disk ? dx[2:0] : tx[2:0];
+	in_kb_s1   <= in_kb | in_badge | in_disk;
+	disk_s1    <= in_disk;
 	loading_s1 <= loading;
 	ltext_s1   <= load_text;
 	lbar_s1    <= load_bar;
@@ -232,6 +245,7 @@ always @(posedge clk) begin
 		             lbar_s1  ? (lfill_s1 ? 24'h40C0FF : 24'h304060) : 24'h102040;
 	else if (!in_kb_s1) video_rgb <= rgb_s1;
 	else if (badge_s1)  video_rgb <= glyph[bit_s1] ? 24'hFFFFFF : 24'h203060;
+	else if (disk_s1)   video_rgb <= glyph[bit_s1] ? 24'hFFFFFF : 24'hA02020;
 	else if (edge_s1)   video_rgb <= 24'h181820;
 	else if (cursor_s1) video_rgb <= ink ? 24'h000000 : 24'hF0F0F0;
 	else if (latched_s1) video_rgb <= ink ? 24'h000000 : 24'hE0A000;
