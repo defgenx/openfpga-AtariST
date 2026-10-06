@@ -1,6 +1,6 @@
 // Full-system test: MiSTery's atarist_sdram (FX68K, GSTMCU, shifter, MFP, IKBD...) boots a
 // real TOS image from a behavioural SDRAM. Reports what TOS made of the machine.
-//   +tos=<hex> +mem=<0..5> +ms=<emulated milliseconds> [+warm=<mem2>]
+//   +tos=<hex> +mem=<0..5> +model=<0 ST,1 STE,2 Mega STE,3 STE Turbo> +ms=<emulated milliseconds> [+warm=<mem2>]
 // +warm reboots once with a different RAM size WITHOUT clearing low RAM (old v0.1.3 path);
 // +cold does the same but clears $0-$FFF first (the v0.1.4 cold restart).
 // +hook installs a reset handler (resvalid/resvector -> a bra.s * loop at $600) before the
@@ -31,8 +31,9 @@ end
 reg porb = 0;
 reg st_reset = 1;
 reg [2:0] mem_sel = 1;
+reg [1:0] model = 0;
 reg  [7:0] acsi_en = 8'h00;
-wire [31:0] system_ctrl = {14'd0, acsi_en, 1'b0, 1'b0 /*mono*/, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
+wire [31:0] system_ctrl = {7'd0, model, 5'd0, acsi_en, 1'b0, 1'b0 /*mono*/, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
 
 // ---- floppy A: served like st_media (ack, 512 bytes, drop ack) from a .st image ----
 reg  [1:0]  fd_mounted = 0; reg [31:0] fd_size = 0;
@@ -141,6 +142,7 @@ integer ms = 400, m, m2, i;
 string hdfile, fdfile;
 initial begin
 	if ($value$plusargs("mem=%d", m)) mem_sel = m[2:0];
+	if ($value$plusargs("model=%d", m)) model = m[1:0];
 	if ($value$plusargs("fd=%s", fdfile)) begin
 		$readmemh(fdfile, floppy);
 		fd_size = 737280;
