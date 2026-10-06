@@ -120,6 +120,10 @@ While loading TOS, `st_media` reads the header: `os_version` (offset 2) and EmuT
 (offset `$2C`). With *Machine = Auto*, `core_top` maps TOS 1.06/1.62 and 256 KB EmuTOS to the STE, TOS 2.05
 to the Mega STE and everything else (TOS 1.0x, 2.06, 192 KB EmuTOS) to the ST; for original TOS the RAM setting is
 capped at 4 MB. The ST is in reset during the load, so it starts with the matching configuration.
+The header registers change while TOS streams in, so Auto's pick is latched only when the load is over,
+one clock before the ST leaves reset (`tos_ready`): the machine the chipset sees never changes
+mid-load, including the GSTMCU that keeps running to pace the download. A cold restart fires on
+menu changes (Machine, Memory, Monitor), never on Auto's pick, so a reload can't trigger another.
 `install.sh` / `install.ps1` read the same header fields from every TOS image on the card and print the
 machine Auto will pick, marking the bundled images apart from the user's own.
 

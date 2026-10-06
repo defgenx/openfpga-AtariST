@@ -588,8 +588,21 @@ wire        tos_256k;
 wire [1:0]  tos_machine = tos_emutos ? (tos_256k ? 2'd1 : 2'd0) :
                           (tos_ver == 16'h0106 || tos_ver == 16'h0162) ? 2'd1 :
                           (tos_ver == 16'h0205) ? 2'd2 : 2'd0;
-wire [1:0]  model_32 = model_sel_32 == 3'd4 ? tos_machine : model_sel_32[1:0];
-wire [2:0]  mem_32   = (!tos_emutos && mem_sel_32 > 3'd3) ? 3'd3 : mem_sel_32;
+// The header registers change while TOS streams in: Auto's pick is latched once the load
+// is over, with the ST still in reset (tos_ready), so the machine never changes mid-load.
+wire        tos_done;
+reg         tos_ready   = 1'b0;
+reg  [1:0]  auto_model  = 2'd0;
+reg         auto_emutos = 1'b0;
+always @(posedge clk_32) begin
+	tos_ready <= tos_done;
+	if (tos_done && !tos_ready) begin
+		auto_model  <= tos_machine;
+		auto_emutos <= tos_emutos;
+	end
+end
+wire [1:0]  model_32 = model_sel_32 == 3'd4 ? auto_model : model_sel_32[1:0];
+wire [2:0]  mem_32   = (!auto_emutos && mem_sel_32 > 3'd3) ? 3'd3 : mem_sel_32;
 wire       linkser_32   = linkmode_32 == 2'd2;
 
 /* ------------------------------------------------------------------------------ */
@@ -599,19 +612,18 @@ wire       linkser_32   = linkmode_32 == 2'd2;
 wire reset_n_s;
 synch_3 s_rst(reset_n, reset_n_s, clk_32);
 
-wire tos_done;
-
 // "Reset ST" is a warm reset. Machine-shape changes (model, RAM, CPU, monitor) and
 // "Cold Restart" go through st_media, which clears low RAM and reloads TOS, so TOS
 // sizes memory and detects the hardware again instead of trusting a stale memvalid.
-reg  [5:0] machine_d = {2'd0, 3'd1, 1'b0};   // defaults, so power-up is no change
+// Only menu changes count: Auto's pick follows each reload and must not trigger another.
+reg  [6:0] machine_d = {3'd4, 3'd1, 1'b0};   // defaults, so power-up is no change
 reg        reset_t_d = 1'b0;
 reg        cold_t_d  = 1'b0;
 reg [15:0] reset_hold = 0;
 reg        cold_req = 1'b0;
 reg        warm_req = 1'b0;
 wire       warm_busy;
-wire [5:0] machine = {model_32, mem_32, mono_32};
+wire [6:0] machine = {model_sel_32, mem_sel_32, mono_32};
 
 always @(posedge clk_32) begin
 	machine_d <= machine;
@@ -623,7 +635,7 @@ always @(posedge clk_32) begin
 	if (reset_t_32 != reset_t_d) reset_hold <= 16'hFFFF;
 end
 
-wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0) | warm_busy;
+wire st_reset = ~reset_n_s | ~tos_ready | (reset_hold != 0) | warm_busy;
 
 wire [31:0] system_ctrl = {
 	1'b0,               // 31
