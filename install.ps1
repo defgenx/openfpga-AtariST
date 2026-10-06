@@ -193,62 +193,6 @@ try {
         foreach ($s in $kept) { Write-Host "  - $s" }
         if (-not $Interactive -and -not $DryRun) { Write-Host "Run the script in a console to be asked about replacing them." }
     }
-
-    # -----------------------------------------------------------------------
-    # 3b. TOS images on the card, and the machine Machine = Auto runs each one as
-    #     (same rule as tos_machine in src/fpga/core/core_top.v)
-    # -----------------------------------------------------------------------
-
-    Write-Host ""
-    Write-Host "TOS images on the card (Core Settings -> TOS; Machine = Auto runs them as):"
-    $own = 0
-    $rejects = New-Object System.Collections.Generic.List[string]
-    $root = Join-Path $SD "Assets/atarist"
-    $sdFull = if (Test-Path -LiteralPath $root -PathType Container) { (Resolve-Path -LiteralPath $SD).Path.TrimEnd('\', '/') } else { $null }
-    if ($sdFull) {
-        foreach ($f in Get-ChildItem -LiteralPath $root -Recurse -File -Force | Sort-Object FullName) {
-            if ($f.Name.StartsWith("._")) { continue }
-            $rel = $f.FullName.Substring($sdFull.Length + 1) -replace '\\', '/'
-            $pick = $f.Extension.ToLower() -in ".img", ".rom", ".bin", ".tos"
-            if ($f.Length -eq 196608) { $kb = 192 } elseif ($f.Length -eq 262144) { $kb = 256 } else { $kb = 0 }
-            # floppies, hard disks and cartridges share these extensions: only judge likely TOS files
-            if ($kb -eq 0) {
-                if ($pick -and $f.Name.ToLower().Contains("tos")) { $rejects.Add("${rel}: $($f.Length) bytes, a TOS must be a raw 196,608 or 262,144 byte image") }
-                continue
-            }
-            $hdr = New-Object byte[] 48
-            $fs = [IO.File]::OpenRead($f.FullName)
-            try { [void]$fs.Read($hdr, 0, 48) } finally { $fs.Close() }
-            $osbase = "{0:x2}{1:x2}{2:x2}{3:x2}" -f $hdr[8], $hdr[9], $hdr[10], $hdr[11]
-            if ($hdr[0] -ne 0x60 -or $osbase -notin "00fc0000", "00e00000") {
-                if ($hdr[1] -eq 0x60) { $rejects.Add("${rel}: byte-swapped dump (swap each byte pair)") }
-                else { $rejects.Add("${rel}: $kb KB but no TOS header (maybe not a TOS, or a split hi/lo ROM dump)") }
-                continue
-            }
-            if (-not $pick) { $rejects.Add("${rel}: the TOS picker only lists .img .rom .bin .tos - rename it"); continue }
-            $ver = "{0:x2}{1:x2}" -f $hdr[2], $hdr[3]
-            if ([Text.Encoding]::ASCII.GetString($hdr, 44, 4) -eq "ETOS") {
-                $name = "EmuTOS"; $machine = if ($kb -eq 256) { "STE" } else { "ST" }
-            } else {
-                $name = "TOS $($ver.Substring(1,1)).$($ver.Substring(2,2))"
-                $machine = switch ($ver) { "0106" { "STE" } "0162" { "STE" } "0205" { "Mega STE" } default { "ST" } }
-            }
-            $bundled = Join-Path $Src $rel
-            if ((Test-Path -LiteralPath $bundled) -and (Get-FileHash -LiteralPath $bundled).Hash -eq (Get-FileHash -LiteralPath $f.FullName).Hash) {
-                $origin = "bundled"
-            } else { $origin = "yours"; $own++ }
-            Write-Host ("  {0,-42} {1,-10} {2,3} KB  {3,-8} -> {4}" -f $rel, $name, $kb, "($origin)", $machine)
-        }
-    }
-    if ($rejects.Count -gt 0) {
-        Write-Host "Not usable as TOS:"
-        foreach ($r in $rejects) { Write-Host "  - $r" }
-    }
-    if ($own -eq 0) {
-        Write-Host "  None of your own TOS images found. Copy a raw 192 or 256 KB dump to"
-        Write-Host "  Assets/atarist/common/ (.img/.rom/.bin/.tos) and pick it in Core Settings -> TOS."
-    }
-
     if ($DryRun) { exit 0 }
 
     # -----------------------------------------------------------------------

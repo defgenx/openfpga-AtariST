@@ -207,59 +207,6 @@ if [ ${#kept[@]} -gt 0 ]; then
 	for s in "${kept[@]}"; do say "  - $s"; done
 	[ $INTERACTIVE -eq 0 ] && [ $DRY_RUN -eq 0 ] && say "Run the script in a terminal to be asked about replacing them."
 fi
-
-# ---------------------------------------------------------------------------
-# 3b. TOS images on the card, and the machine Machine = Auto runs each one as
-#     (same rule as tos_machine in src/fpga/core/core_top.v)
-# ---------------------------------------------------------------------------
-
-hexbytes() { od -An -tx1 -j "$2" -N "$3" "$1" | tr -d ' \n'; }
-say ""
-say "TOS images on the card (Core Settings -> TOS; Machine = Auto runs them as):"
-own=0
-rejects=()
-if [ -d "$SD/Assets/atarist" ]; then
-	while IFS= read -r -d '' f <&4; do
-		base="$(basename "$f")"
-		case "$base" in ._*) continue ;; esac
-		rel="${f#"$SD"/}"
-		ext="$(printf '%s' "${base##*.}" | tr 'A-Z' 'a-z')"
-		lname="$(printf '%s' "$base" | tr 'A-Z' 'a-z')"
-		size=$(wc -c < "$f" | tr -d ' ')
-		case "$ext" in img|rom|bin|tos) pick=1 ;; *) pick=0 ;; esac
-		case "$size" in 196608) kb=192 ;; 262144) kb=256 ;; *) kb=0 ;; esac
-		# floppies, hard disks and cartridges share these extensions: only judge likely TOS files
-		if [ $kb -eq 0 ]; then
-			case "$lname" in *tos*) [ $pick -eq 1 ] && rejects+=("$rel: $size bytes, a TOS must be a raw 196,608 or 262,144 byte image") ;; esac
-			continue
-		fi
-		magic="$(hexbytes "$f" 0 1)"; osbase="$(hexbytes "$f" 8 4)"
-		if [ "$magic" != "60" ] || { [ "$osbase" != "00fc0000" ] && [ "$osbase" != "00e00000" ]; }; then
-			if [ "$(hexbytes "$f" 1 1)" = "60" ]; then rejects+=("$rel: byte-swapped dump (swap each byte pair, e.g. dd conv=swab)")
-			else rejects+=("$rel: $kb KB but no TOS header (maybe not a TOS, or a split hi/lo ROM dump)"); fi
-			continue
-		fi
-		if [ $pick -eq 0 ]; then rejects+=("$rel: the TOS picker only lists .img .rom .bin .tos - rename it"); continue; fi
-		ver="$(hexbytes "$f" 2 2)"
-		if [ "$(hexbytes "$f" 44 4)" = "45544f53" ]; then
-			name="EmuTOS"; [ $kb -eq 256 ] && machine="STE" || machine="ST"
-		else
-			name="TOS ${ver:1:1}.${ver:2:2}"
-			case "$ver" in 0106|0162) machine="STE" ;; 0205) machine="Mega STE" ;; *) machine="ST" ;; esac
-		fi
-		if [ -f "$SRC/$rel" ] && cmp -s "$SRC/$rel" "$f"; then origin="bundled"; else origin="yours"; own=$((own + 1)); fi
-		say "$(printf '  %-42s %-10s %3s KB  %-8s -> %s' "$rel" "$name" "$kb" "($origin)" "$machine")"
-	done 4< <(find "$SD/Assets/atarist" -type f -print0 | sort -z)
-fi
-if [ ${#rejects[@]} -gt 0 ]; then
-	say "Not usable as TOS:"
-	for r in "${rejects[@]}"; do say "  - $r"; done
-fi
-if [ $own -eq 0 ]; then
-	say "  None of your own TOS images found. Copy a raw 192 or 256 KB dump to"
-	say "  Assets/atarist/common/ (.img/.rom/.bin/.tos) and pick it in Core Settings -> TOS."
-fi
-
 [ $DRY_RUN -eq 1 ] && exit 0
 
 # ---------------------------------------------------------------------------

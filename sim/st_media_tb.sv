@@ -45,11 +45,6 @@ wire        t_read, t_write;
 wire [15:0] t_id;
 wire [31:0] t_off, t_baddr, t_len;
 reg         t_done = 0;
-reg   [2:0] t_err = 0;
-integer     fail_cmds = 0;     // the next N commands answer with an error and no data
-integer     cmds = 0;
-reg         warm_req = 0;
-wire        warm_busy;
 reg         ds_update = 0;
 reg  [15:0] ds_update_id = 0;
 reg  [31:0] ds_update_size = 0;
@@ -81,10 +76,10 @@ st_media dut (
 	.bridge_addr(bridge_addr), .bridge_wr(bridge_wr), .bridge_wr_data(bridge_wr_data), .bridge_rd_data(bridge_rd_data),
 	.target_dataslot_read(t_read), .target_dataslot_write(t_write), .target_dataslot_id(t_id),
 	.target_dataslot_slotoffset(t_off), .target_dataslot_bridgeaddr(t_baddr), .target_dataslot_length(t_len),
-	.target_dataslot_done(t_done), .target_dataslot_err(t_err),
+	.target_dataslot_done(t_done),
 	.dataslot_update(ds_update), .dataslot_update_id(ds_update_id), .dataslot_update_size(ds_update_size),
 	.dataslot_allcomplete(allcomplete), .datatable_addr(dt_addr), .datatable_q(dt_q),
-	.cold_req(cold_req), .warm_req(warm_req), .warm_busy(warm_busy), .tos_done(tos_done), .load_cart(load_cart), .load_pct(load_pct), .tos_ver(tos_ver), .tos_emutos(tos_emutos), .tos_256k(), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
+	.cold_req(cold_req), .tos_done(tos_done), .load_cart(load_cart), .load_pct(load_pct), .tos_ver(tos_ver), .tos_emutos(tos_emutos), .data_download(data_download), .data_addr(data_addr), .data_in_reg(data_in_reg), .data_in_strobe(data_in_strobe),
 	.img_mounted(img_mounted), .img_size(img_size), .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
 	.sd_buff_addr(sd_buff_addr), .sd_dout(sd_dout), .sd_dout_strobe(sd_dout_strobe), .sd_din(sd_din),
 	.hd_rd(hd_rd), .hd_wr(hd_wr), .hd_lba(hd_lba), .hd_ack(hd_ack), .hd_din(hd_din), .hd_size0(hd_size0), .hd_size1()
@@ -127,12 +122,7 @@ initial begin : apf
 			// bridge clears done when it starts the command
 			repeat (3) apf_cycle; t_done <= 0;
 			repeat (40) apf_cycle;
-			cmds = cmds + 1;
-			if (fail_cmds > 0) begin
-				fail_cmds = fail_cmds - 1;
-				t_err <= 3'd2;
-			end else if (op_read) begin
-				t_err <= 3'd0;
+			if (op_read) begin
 				for (w = 0; w < t_len / 4; w = w + 1) begin
 					base = t_off + w * 4;
 					if (t_id == 0) word = {tos[base], tos[base+1], tos[base+2], tos[base+3]};
@@ -144,7 +134,6 @@ initial begin : apf
 					repeat (2) apf_cycle;    // APF writes are not back to back
 				end
 			end else begin
-				t_err <= 3'd0;
 				for (w = 0; w < t_len / 4; w = w + 1) begin
 					bridge_addr <= t_baddr + w * 4;
 					repeat (3) apf_cycle;
@@ -173,19 +162,11 @@ integer errors = 0;
 integer words_seen = 0;
 integer clear_seen = 0;
 integer k2;
-integer warm_seen = 0;
 reg strobe_d = 0;
-reg in_warm = 0;
 reg [23:0] exp_byte_addr;
 always @(posedge clk_32) begin
 	strobe_d <= data_in_strobe;
-	if (data_in_strobe != strobe_d && in_warm) begin
-		if ({data_addr, 1'b0} != 24'h426 + warm_seen * 2 || data_in_reg != 16'h0000 || !warm_busy) begin
-			$display("warm clear mismatch word %0d: addr %06x data %04x busy %b", warm_seen, {data_addr, 1'b0}, data_in_reg, warm_busy);
-			errors = errors + 1;
-		end
-		warm_seen = warm_seen + 1;
-	end else if (data_in_strobe != strobe_d && clear_seen < 2048) begin
+	if (data_in_strobe != strobe_d && clear_seen < 2048) begin
 		if ({data_addr, 1'b0} != clear_seen * 2 || data_in_reg != 16'h0000) begin
 			$display("clear mismatch word %0d: addr %06x data %04x", clear_seen, {data_addr, 1'b0}, data_in_reg);
 			errors = errors + 1;
@@ -247,18 +228,6 @@ initial begin
 	end
 	$display("sector read done");
 
-	// APF answers twice with an error: the read is sent again and the data is still right
-	cmds = 0; fail_cmds = 2;
-	for (k = 0; k < 512; k = k + 1) fdc_buf[k] = 8'h00;
-	@(posedge clk_32); sd_lba <= 9; sd_rd <= 2'b01;
-	wait (sd_ack); wait (!sd_ack);
-	for (k = 0; k < 512; k = k + 1) if (fdc_buf[k] !== fda[9*512 + k]) begin
-		if (errors < 10) $display("retried read mismatch byte %0d: %02x expected %02x", k, fdc_buf[k], fda[9*512+k]);
-		errors = errors + 1;
-	end
-	if (cmds != 3) begin $display("expected 3 commands for the retried read, got %0d", cmds); errors = errors + 1; end
-	$display("sector read after 2 APF errors: %0d commands", cmds);
-
 	// sector write, drive A, LBA 7
 	for (k = 0; k < 512; k = k + 1) fdc_buf[k] = 8'hA5 ^ k[7:0];
 	@(posedge clk_32); sd_lba <= 7; sd_wr <= 2'b01;
@@ -289,18 +258,6 @@ initial begin
 		if (errors < 10) $display("hd write mismatch %0d", k); errors = errors + 1; end
 	$display("hd sector read/write done");
 
-	// warm reset: resvalid/resvector zeroed while the ST is held in reset, TOS not reloaded
-	in_warm = 1; words_seen = 0;
-	@(posedge clk_32); warm_req <= 1; @(posedge clk_32); warm_req <= 0;
-	@(posedge clk_32);
-	if (!warm_busy) begin $display("warm_busy not raised"); errors = errors + 1; end
-	wait (!warm_busy);
-	repeat (10) @(posedge clk_32);
-	in_warm = 0;
-	if (warm_seen != 4 || words_seen != 0 || !tos_done) begin
-		$display("warm reset: %0d words cleared (expected 4), %0d TOS words, tos_done %b", warm_seen, words_seen, tos_done); errors = errors + 1; end
-	else $display("warm reset: $426-$42D cleared");
-
 	// cold restart (a RAM/machine change in the menu): low RAM cleared and TOS reloaded again
 	clear_seen = 0; words_seen = 0;
 	@(posedge clk_32); cold_req <= 1; @(posedge clk_32); cold_req <= 0;
@@ -311,18 +268,6 @@ initial begin
 	wait (tos_done);
 	$display("cold restart: %0d words cleared, %0d TOS words reloaded", clear_seen, words_seen);
 	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2 + 65536) begin $display("cold restart incomplete"); errors = errors + 1; end
-
-	// a new TOS picked in the menu (Dataslot Update for slot 0): reloaded without any restart request
-	clear_seen = 0; words_seen = 0;
-	@(posedge clk_74a); ds_update_id <= 0; ds_update_size <= TOS_SIZE; ds_update <= 1;
-	@(posedge clk_74a); ds_update <= 0;
-	fork : wait_tos
-		begin wait (!tos_done); disable wait_tos; end
-		begin repeat (5000) @(posedge clk_32); $display("new TOS picked: no reload"); errors = errors + 1; disable wait_tos; end
-	join
-	wait (tos_done);
-	$display("new TOS picked: %0d words cleared, %0d TOS words reloaded", clear_seen, words_seen);
-	if (clear_seen != 2048 || words_seen != TOS_SIZE / 2 + 65536) begin $display("TOS reload incomplete"); errors = errors + 1; end
 
 	if (errors == 0) $display("PASS");
 	else $display("FAIL: %0d errors", errors);

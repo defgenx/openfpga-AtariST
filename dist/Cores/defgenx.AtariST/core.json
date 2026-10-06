@@ -9,7 +9,7 @@
       "description": "Atari ST/STE/Mega STE, port of the MiSTery core",
       "author": "defgenx",
       "url": "https://github.com/defgenx/openfpga-AtariST",
-      "version": "0.2.7",
+      "version": "0.2.8",
       "date_release": "2026-10-06"
     },
     "framework": {

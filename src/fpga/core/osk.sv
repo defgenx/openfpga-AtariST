@@ -23,7 +23,7 @@ module osk_ctrl (
 
 `include "osk_layout.svh"
 
-localparam ROWS = 5;
+localparam ROWS = 5, COLS = 16;
 localparam [23:0] REPEAT_FIRST = 24'd12_800_000;  // ~400 ms at 32 MHz
 localparam [23:0] REPEAT_NEXT  = 24'd3_200_000;   // ~100 ms
 
@@ -130,7 +130,7 @@ module osk_overlay #(
 
 `include "osk_layout.svh"
 
-localparam KB_W = 640, KB_H = 80, CELL_W = 40;
+localparam KB_W = 640, KB_H = 80, CELL_W = 40, CELL_H = 16;
 
 reg [7:0] font[1024];
 initial $readmemh(FONT_FILE, font);

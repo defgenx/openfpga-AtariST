@@ -81,9 +81,9 @@ On the Pocket: press the Analogue button while the core runs → *Core Settings*
 
 | Setting            | Values                               | Notes                                                    |
 |--------------------|--------------------------------------|----------------------------------------------------------|
-| Reset ST (warm)    | –                                    | like the reset button on a real ST, except that a game's reset handler can't catch it: TOS always boots again and runs the disk in *Floppy A* |
+| Reset ST (warm)    | –                                    | like the reset button on a real ST                       |
 | Cold Restart       | –                                    | clears memory, reloads TOS, restarts from scratch        |
-| Machine            | **Auto** / ST / STE / Mega STE / STE Turbo | **Auto** (default) picks the machine your TOS needs: TOS 1.06/1.62 and 256 KB EmuTOS (the bundled `tos.img`) → STE, TOS 2.05 → Mega STE, anything else (TOS 1.00–1.04, 2.06, 192 KB EmuTOS) → ST. The installer lists each TOS on the card with the machine Auto picks for it. Pick one yourself only if you know the TOS supports it; STE Turbo is not a real Atari model |
+| Machine            | **Auto** / ST / STE / Mega STE / STE Turbo | **Auto** (default) picks the machine your TOS needs: TOS 1.06/1.62 → STE, TOS 2.05 → Mega STE, anything else → ST. Pick one yourself only if you know the TOS supports it; STE Turbo is not a real Atari model |
 | Memory             | 512 KB … 14 MB (1 MB default)        | cold restart; with original Atari TOS, 8/14 MB are capped to 4 MB automatically (EmuTOS uses them) |
 | Monitor            | Colour / Mono (SM124)                | cold restart; mono is 640×400 high-res software only     |
 | Blitter (ST only)  | Off / On                             | the STE and Mega STE always have one                     |
@@ -110,9 +110,6 @@ Settings are saved on the card (`Settings/defgenx.AtariST/`) and come back at th
 | **A white or black screen for a while after picking a disk** | The ST is reading the floppy at real-drive speed; the red *DISK A* badge (top right) shows it is working. Games often take 10–30 s to boot, as on a real ST. |
 | **Bombs, a bus error or a black screen after changing a setting** | *Core Settings → Reset All Settings*. If the menu doesn't help, erase the saved settings: `./install.sh --reset-settings` (Windows: `install.bat -ResetSettings`), or delete `Settings/defgenx.AtariST/` on the card. |
 | **The ST hangs or acts strangely after a crash** | *Core Settings → Cold Restart*. *Reset ST (warm)* keeps memory, like a real ST's reset button. |
-| **Testing which TOS + floppy combination auto-starts a game** | Pick the TOS and the disk in *Floppy A*, then *Cold Restart*: it re-reads the selected TOS file, clears memory and boots the disk. *Reset ST (warm)* boots the disk with the TOS already loaded. |
-| **A TOS I copied to the card is not offered, or Auto picks the wrong machine** | Run the installer again (`--dry-run` is enough): it lists every TOS under `Assets/atarist/` with the machine Auto picks, and says why a file can't be used (wrong size, extension the picker hides, byte-swapped dump). Before v0.2.6 a settings bug made Auto always run a Mega STE. |
-| **"Data on the disk in drive A: may be damaged"** | The core now retries sector reads the Pocket answers with an error, one possible cause. If it still happens, check the image is a raw `.st` of a standard size (360/720/800 KB …). |
 | **Black screen at start** | `Assets/atarist/common/tos.img` is missing or not a raw 192/256 KB TOS (exactly 196,608 or 262,144 bytes). Re-run the installer, or copy `tos.img` from the release zip. |
 | **The D-pad does nothing on the desktop** | You are in joystick or keys mode. Press **Start** until the label shows MOUSE. |
 | **A game ignores the joystick** | Press **Start** until the label shows JOYSTICK. If the game is played on the keyboard, use KEYS mode instead. |
