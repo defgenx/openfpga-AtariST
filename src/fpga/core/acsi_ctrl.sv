@@ -72,7 +72,6 @@ wire [7:0] op = cmd[0];
 wire       is10 = op[5];                         // group 1: 10-byte CDB
 wire [31:0] cdb_lba = is10 ? {cmd[2], cmd[3], cmd[4], cmd[5]} : {11'd0, cmd[1][4:0], cmd[2], cmd[3]};
 wire [16:0] cdb_len = is10 ? {1'b0, cmd[7], cmd[8]} : (cmd[4] == 0 ? 17'd256 : {9'd0, cmd[4]});
-wire [31:0] last_lba = blocks - 32'd1;
 
 // fixed responses, built word by word (index = word number)
 function automatic [15:0] resp_word(input [7:0] opc, input [3:0] w, input [31:0] nblk,

@@ -90,7 +90,7 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | Address       | Setting        | Values                                   |
 |---------------|----------------|------------------------------------------|
 | `0x80000000`  | Reset ST (warm) | any write                               |
-| `0x80000004`  | Machine        | 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo (STEroids), 4 Auto (default) |
+| `0x80000004`  | Machine        | 0 ST (default), 1 STE, 2 Mega STE, 3 STE Turbo (STEroids); 4 (the removed Auto) runs as ST |
 | `0x80000008`  | Memory         | 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M    |
 | `0x8000000C`  | Monitor        | 0 colour, 1 mono                         |
 | `0x80000010`  | Blitter (ST)   | 0/1 (the STE always has one)             |
@@ -105,12 +105,17 @@ reset would keep the magic, and TOS would skip memory sizing and keep a stale me
 | `0x80000028`  | Cold Restart   | any write                                |
 | `0x8000002C`  | Reset All Settings | any write: every register to its default, then a cold restart |
 
-## TOS / machine sync
+## TOS size
 
-While loading TOS, `st_media` reads the header: `os_version` (offset 2) and EmuTOS's `ETOS` magic
-(offset `$2C`). With *Machine = Auto*, `core_top` maps TOS 1.06/1.62 to the STE, TOS 2.05 to the Mega
-STE and everything else (TOS 1.0x, 2.06, any EmuTOS) to the ST; for original TOS the RAM setting is
-capped at 4 MB. The ST is in reset during the load, so it starts with the matching configuration.
+The machine is whatever *Machine* says; the core does not pick it from the TOS. The only header byte
+`st_media` reads is byte 9 of `os_base`: `$FC` loads a 192 KB TOS at `$FC0000`, anything else a 256 KB
+TOS at `$E00000`.
+
+## Warm reset
+
+*Reset ST (warm)* holds the ST in reset while `st_media` zeroes resvalid/resvector (`$426`–`$42D`), so a
+game's reset handler can't swallow the reset and TOS boots the disk in drive A. memvalid is kept, so
+memory is not sized again (`warm_req` / `warm_busy`, state `S_WARM`).
 
 ## ACSI hard disks
 

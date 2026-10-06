@@ -250,7 +250,6 @@ assign cart_pin30_pwroff_reset = 1'b0;  // hardware can control this
 assign cart_tran_pin31 = 1'bz;      // input
 assign cart_tran_pin31_dir = 1'b0;  // input
 
-// link port is unused, set to input only to be safe
 // SO / SI carry MIDI OUT / IN (31250 baud) or the RS-232 port's TX / RX (3.3 V levels);
 // otherwise the port is left as inputs. SC and SD stay inputs.
 assign port_tran_so = link_on_74 ? link_tx_74 : 1'bz;
@@ -512,7 +511,7 @@ end
 
 reg        cfg_reset_t = 1'b0;   // toggles on "Reset ST" (warm)
 reg        cfg_cold_t  = 1'b0;   // toggles on "Cold Restart" and "Reset All Settings"
-reg  [2:0] cfg_model    = 3'd4;  // 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo, 4 Auto (match the TOS)
+reg  [2:0] cfg_model    = 3'd0;  // 0 ST, 1 STE, 2 Mega STE, 3 STE Turbo (4, the old Auto, runs as ST)
 reg  [2:0] cfg_mem      = 3'd1;  // 0 512K, 1 1M, 2 2M, 3 4M, 4 8M, 5 14M
 reg        cfg_mono     = 1'b0;
 reg        cfg_blitter  = 1'b0;
@@ -543,7 +542,7 @@ always @(posedge clk_74a) begin
 		8'h3C: cfg_cubase    <= bridge_wr_data[0];
 		8'h28: cfg_cold_t   <= ~cfg_cold_t;
 		8'h2C: begin   // Reset All Settings: defaults, then a cold restart
-			cfg_model <= 3'd4; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
+			cfg_model <= 3'd0; cfg_mem <= 3'd1; cfg_mono <= 1'b0; cfg_blitter <= 1'b0;
 			cfg_stereo <= 1'b0; cfg_wp <= 2'b11; cfg_borders <= 1'b1; cfg_padmode <= 2'd1;
 			cfg_mouse_spd <= 2'd1; cfg_linkmode <= 2'd0; cfg_cubase <= 1'b0; cfg_cold_t <= ~cfg_cold_t;
 		end
@@ -566,38 +565,20 @@ always @(posedge clk_74a) begin
 	endcase
 end
 
-// quasi-static settings, synchronised as a bundle
-wire [22:0] cfg_s;
-synch_3 #(.WIDTH(23)) s_cfg(
+// quasi-static settings, synchronised as a bundle; unpacked by the mirror-image
+// concatenation below, so keep the two lists identical
+wire       cubase_32, stepad_t_32, cold_t_32, reset_t_32, mono_32, blitter_32, stereo_32, borders_32;
+wire [1:0] linkmode_32, mouse_spd_32, wp_32, padmode_32;
+wire [2:0] model_sel_32, mem_32;
+localparam CFG_W = 22;
+wire [CFG_W-1:0] cfg_s;
+synch_3 #(.WIDTH(CFG_W)) s_cfg(
 	{cfg_cubase, cfg_linkmode, cfg_stepad_t, cfg_mouse_spd, cfg_cold_t, cfg_reset_t, cfg_model, cfg_mem, cfg_mono, cfg_blitter, cfg_stereo, cfg_wp, cfg_borders, cfg_padmode},
 	cfg_s, clk_32);
-wire       cubase_32    = cfg_s[22];
-wire [1:0] linkmode_32  = cfg_s[21:20];
+assign {cubase_32, linkmode_32, stepad_t_32, mouse_spd_32, cold_t_32, reset_t_32, model_sel_32, mem_32, mono_32, blitter_32, stereo_32, wp_32, borders_32, padmode_32} = cfg_s;
 wire       linkmidi_32  = linkmode_32 == 2'd1;
-
-// Machine and RAM follow the TOS so the two can't disagree: TOS 1.06/1.62 need an STE,
-// TOS 2.05 a Mega STE, everything else (TOS 1.0x, 2.06, EmuTOS) runs as an ST; original
-// TOS sizes at most 4 MB. The header is parsed while the ST is held in reset.
-wire [15:0] tos_ver;
-wire        tos_emutos;
-wire [1:0]  tos_machine = tos_emutos ? 2'd0 :
-                          (tos_ver == 16'h0106 || tos_ver == 16'h0162) ? 2'd1 :
-                          (tos_ver == 16'h0205) ? 2'd2 : 2'd0;
-wire [1:0]  model_32 = model_sel_32 == 3'd4 ? tos_machine : model_sel_32[1:0];
-wire [2:0]  mem_32   = (!tos_emutos && mem_sel_32 > 3'd3) ? 3'd3 : mem_sel_32;
 wire       linkser_32   = linkmode_32 == 2'd2;
-wire       stepad_t_32  = cfg_s[19];
-wire [1:0] mouse_spd_32 = cfg_s[18:17];
-wire       cold_t_32    = cfg_s[16];
-wire       reset_t_32   = cfg_s[15];
-wire [2:0] model_sel_32 = cfg_s[14:12];
-wire [2:0] mem_sel_32   = cfg_s[11:9];
-wire       mono_32      = cfg_s[8];
-wire       blitter_32   = cfg_s[7];
-wire       stereo_32    = cfg_s[6];
-wire [1:0] wp_32        = cfg_s[5:4];
-wire       borders_32   = cfg_s[3];
-wire [1:0] padmode_32   = cfg_s[2:1];
+wire [1:0] model_32     = model_sel_32[1:0];
 
 /* ------------------------------------------------------------------------------ */
 /* ------------------------------------- Reset ---------------------------------- */
@@ -616,6 +597,8 @@ reg        reset_t_d = 1'b0;
 reg        cold_t_d  = 1'b0;
 reg [15:0] reset_hold = 0;
 reg        cold_req = 1'b0;
+reg        warm_req = 1'b0;
+wire       warm_busy;
 wire [5:0] machine = {model_32, mem_32, mono_32};
 
 always @(posedge clk_32) begin
@@ -623,11 +606,12 @@ always @(posedge clk_32) begin
 	reset_t_d <= reset_t_32;
 	cold_t_d  <= cold_t_32;
 	cold_req  <= (machine != machine_d) || (cold_t_32 != cold_t_d);
+	warm_req  <= reset_t_32 != reset_t_d;
 	if (reset_hold != 0) reset_hold <= reset_hold - 16'd1;
 	if (reset_t_32 != reset_t_d) reset_hold <= 16'hFFFF;
 end
 
-wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0);
+wire st_reset = ~reset_n_s | ~tos_done | (reset_hold != 0) | warm_busy;
 
 wire [31:0] system_ctrl = {
 	1'b0,               // 31
@@ -716,6 +700,7 @@ st_media media (
 	.target_dataslot_bridgeaddr ( target_dataslot_bridgeaddr ),
 	.target_dataslot_length     ( target_dataslot_length ),
 	.target_dataslot_done       ( target_dataslot_done ),
+	.target_dataslot_err        ( target_dataslot_err ),
 
 	.dataslot_update            ( dataslot_update ),
 	.dataslot_update_id         ( dataslot_update_id ),
@@ -725,11 +710,11 @@ st_media media (
 	.datatable_q                ( datatable_q ),
 
 	.cold_req                   ( cold_req ),
+	.warm_req                   ( warm_req ),
+	.warm_busy                  ( warm_busy ),
 	.tos_done                   ( tos_done ),
 	.load_cart                  ( load_cart ),
 	.load_pct                   ( load_pct ),
-	.tos_ver                    ( tos_ver ),
-	.tos_emutos                 ( tos_emutos ),
 	.data_download              ( data_download ),
 	.data_addr                  ( data_addr ),
 	.data_in_reg                ( media_data_in_reg ),
@@ -1021,7 +1006,7 @@ synch_3 #(.WIDTH(64)) s_rtc(rtc_74, rtc, clk_32);
 /* ------------------------------------------------------------------------------ */
 
 wire  [3:0] st_r, st_g, st_b;
-wire        st_hsync_n, st_vsync_n, st_hblank_n, st_vblank_n, st_blank_n;
+wire        st_hsync_n, st_vsync_n, st_blank_n;
 wire        st_monomode;
 wire [14:0] audio_mix_l, audio_mix_r;
 wire        st_led_n;
@@ -1061,8 +1046,8 @@ atarist_sdram #(1'b0, 1'b1) atarist (   // TG68K (68020) not built: no ST had on
 	.vsync_n             ( st_vsync_n ),
 	.monomode            ( st_monomode ),
 	.blank_n             ( st_blank_n ),
-	.hblank_n            ( st_hblank_n ),
-	.vblank_n            ( st_vblank_n ),
+	.hblank_n            ( ),
+	.vblank_n            ( ),
 
 	.viking_active       ( ),
 	.viking_r            ( ),

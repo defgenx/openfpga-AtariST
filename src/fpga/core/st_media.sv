@@ -31,6 +31,7 @@ module st_media (
 	output reg  [31:0] target_dataslot_bridgeaddr,
 	output reg  [31:0] target_dataslot_length,
 	input  wire        target_dataslot_done,
+	input  wire  [2:0] target_dataslot_err,
 
 	// host notifications (clk_74a)
 	input  wire        dataslot_update,
@@ -42,10 +43,10 @@ module st_media (
 
 	// ST side (clk_32)
 	input  wire        cold_req,       // pulse: clear low RAM, reload TOS, restart
+	input  wire        warm_req,       // pulse: clear the reset-proof vector before a warm reset
+	output wire        warm_busy,      // keep the ST in reset until that is done
 	output reg         tos_done,
 	output wire        load_cart,      // loading screen: cartridge rather than TOS
-	output reg  [15:0] tos_ver = 16'h0000, // os_version from the TOS header ($0104, $0206 ...)
-	output reg         tos_emutos = 1'b0,  // header carries EmuTOS's "ETOS" magic
 	output reg  [11:0] load_pct = 12'h000, // loading screen: progress, 3 BCD digits (000-100)
 
 	output reg         data_download,
@@ -201,8 +202,12 @@ reg        ack_t_74;
 reg  [2:0] req_t_s;
 always @(posedge clk_74a) req_t_s <= {req_t_s[1:0], req_t};
 
-localparam E_IDLE = 2'd0, E_START = 2'd1, E_WAIT_LOW = 2'd2, E_WAIT_DONE = 2'd3;
-reg [1:0] estate;
+// A command APF answers with an error code is sent again after ~1 ms, up to 7 times;
+// acknowledging it would hand the FDC whatever the read buffer held before.
+localparam E_IDLE = 3'd0, E_START = 3'd1, E_WAIT_LOW = 3'd2, E_WAIT_DONE = 3'd3, E_BACKOFF = 3'd4;
+reg  [2:0] estate;
+reg  [2:0] retries;
+reg [16:0] backoff;
 
 always @(posedge clk_74a) begin
 	target_dataslot_read  <= 1'b0;
@@ -214,6 +219,7 @@ always @(posedge clk_74a) begin
 			target_dataslot_slotoffset <= req_offset;
 			target_dataslot_length     <= req_length;
 			target_dataslot_bridgeaddr <= req_bridgeaddr;
+			retries <= 3'd0;
 			estate <= E_START;
 		end
 		E_START: begin
@@ -224,9 +230,20 @@ always @(posedge clk_74a) begin
 		// done stays high from the previous command until the bridge starts this one
 		E_WAIT_LOW:  if (!target_dataslot_done) estate <= E_WAIT_DONE;
 		E_WAIT_DONE: if (target_dataslot_done) begin
-			ack_t_74 <= req_t_s[2];
-			estate <= E_IDLE;
+			if (target_dataslot_err != 3'd0 && retries != 3'd7) begin
+				retries <= retries + 3'd1;
+				backoff <= 17'd0;
+				estate <= E_BACKOFF;
+			end else begin
+				ack_t_74 <= req_t_s[2];
+				estate <= E_IDLE;
+			end
 		end
+		E_BACKOFF: begin
+			backoff <= backoff + 17'd1;
+			if (backoff == 17'h1FFFF) estate <= E_START;
+		end
+		default: estate <= E_IDLE;
 	endcase
 end
 
@@ -237,6 +254,7 @@ end
 reg [2:0] ack_t_s, boot_s;
 reg [2:0] mount_s0, mount_s1, tos_s;
 reg       tos_seen, tos_pending;
+reg       warm_pending;
 always @(posedge clk_32) begin
 	ack_t_s  <= {ack_t_s[1:0], ack_t_74};
 	boot_s   <= {boot_s[1:0], boot_ready_74};
@@ -261,7 +279,8 @@ localparam [4:0]
 	S_FD_WR_DATA = 5'd11,
 	S_FD_WR_WAIT = 5'd12,
 	S_FD_END     = 5'd13,
-	S_CLEAR      = 5'd14;
+	S_CLEAR      = 5'd14,
+	S_WARM       = 5'd15;
 
 reg  [4:0] state;
 reg  [5:0] tos_chunk;            // 16 KB chunks
@@ -272,7 +291,6 @@ reg  [2:0] cart_skip;           // header bytes skipped (Hatari .stc files may c
 reg [12:0] word_idx;
 reg  [5:0] pace;
 reg  [4:0] hdr_cnt;
-reg        etos_ok;
 reg  [8:0] byte_idx;
 reg  [1:0] phase;               // RAM reads: set address, wait, use q
 reg        hd_cur;              // the request being served is an ACSI one
@@ -287,6 +305,7 @@ initial begin
 	req_t = 1'b0;
 	ack_t_74 = 1'b0;
 	estate = E_IDLE;
+	retries = 3'd0;
 	boot_ready_74 = 1'b0;
 	dt_scanning = 1'b0;
 	mount_t_74 = 2'b00;
@@ -294,6 +313,7 @@ initial begin
 	cart_size_74 = 32'd0;
 	tos_seen = 1'b0;
 	tos_pending = 1'b0;
+	warm_pending = 1'b0;
 	mount_seen = 2'b00;
 	mount_pending = 2'b00;
 	img_mounted = 2'b00;
@@ -308,6 +328,7 @@ initial begin
 end
 
 assign load_cart = loading_cart;
+assign warm_busy = warm_pending || state == S_WARM;
 
 // progress in percent, as BCD for the loading screen: each finished chunk adds 100 to
 // 'pct_acc', which is then divided by the chunk count one subtraction per clock
@@ -352,10 +373,12 @@ always @(posedge clk_32) begin
 	if (tos_s[2] != tos_seen) begin tos_seen <= tos_s[2]; tos_pending <= 1'b1; end
 	// while TOS is loading the ST is in reset anyway: a restart then would just load twice
 	if (cold_req && tos_done) tos_pending <= 1'b1;
+	if (warm_req && tos_done) warm_pending <= 1'b1;
 
 	case (state)
 	S_BOOT: begin
 		tos_done <= 1'b0;
+		warm_pending <= 1'b0;   // the boot clears low RAM anyway
 		data_download <= 1'b0;
 		if (boot_s[2]) begin
 			pct_reset <= 1'b1;
@@ -386,6 +409,25 @@ always @(posedge clk_32) begin
 		end
 	end
 
+	// Warm reset: zero resvalid/resvector ($426-$42D) so TOS boots instead of jumping
+	// into a program's reset handler; memvalid stays, so memory is not sized again.
+	S_WARM: begin
+		pace <= pace + 6'd1;
+		if (pace == 6'd0) begin
+			data_in_reg <= 16'h0000;
+			data_addr <= 23'h213 + {21'd0, word_idx[1:0]};
+		end
+		if (pace == 6'd4) data_in_strobe <= ~data_in_strobe;
+		if (pace == STROBE_GAP) begin
+			pace <= 6'd0;
+			word_idx <= word_idx + 13'd1;
+			if (word_idx == 13'd3) begin
+				data_download <= 1'b0;
+				state <= S_IDLE;
+			end
+		end
+	end
+
 	// ---------------- TOS: 16 KB chunks into ST ROM space ----------------
 	S_TOS_REQ: if (!req_busy) begin
 		req_write      <= 1'b0;
@@ -400,39 +442,20 @@ always @(posedge clk_32) begin
 	S_TOS_WAIT: if (!req_busy) begin
 		word_idx <= 13'd0;
 		hdr_cnt <= 5'd0;
-		rbuf_raddr <= 14'd2;
+		rbuf_raddr <= 14'd9;
 		state <= (tos_chunk == 0 && !loading_cart) ? S_TOS_HDR : S_TOS_HI;
 	end
 
-	// os_base (long at offset 8) tells 192 KB TOS at $FC0000 from 256 KB TOS at $E00000
-	// Header: os_version at 2-3, os_base at 8-11 (only byte 9 matters: $FC = 192 KB TOS at
-	// $FC0000, else 256 KB at $E00000), "ETOS" at $2C-$2F marks EmuTOS. One byte per 4 clocks.
+	// os_base (long at offset 8): byte 9 is $FC for a 192 KB TOS at $FC0000, else it is a
+	// 256 KB TOS at $E00000. rbuf_q is sampled 3 clocks after the address is set.
 	S_TOS_HDR: begin
 		hdr_cnt <= hdr_cnt + 5'd1;
-		case (hdr_cnt[4:2])
-			3'd0: rbuf_raddr <= 14'd2;
-			3'd1: rbuf_raddr <= 14'd3;
-			3'd2: rbuf_raddr <= 14'h2C;
-			3'd3: rbuf_raddr <= 14'h2D;
-			3'd4: rbuf_raddr <= 14'h2E;
-			3'd5: rbuf_raddr <= 14'h2F;
-			3'd6: rbuf_raddr <= 14'd9;
-			default: ;
-		endcase
-		if (hdr_cnt[1:0] == 2'd3) case (hdr_cnt[4:2])
-			3'd0: tos_ver[15:8] <= rbuf_q;
-			3'd1: tos_ver[7:0]  <= rbuf_q;
-			3'd2: etos_ok <= rbuf_q == "E";
-			3'd3: etos_ok <= etos_ok & (rbuf_q == "T");
-			3'd4: etos_ok <= etos_ok & (rbuf_q == "O");
-			3'd5: tos_emutos <= etos_ok & (rbuf_q == "S");
-			3'd6: begin
-				if (rbuf_q == 8'hFC) begin tos_base <= 23'h7E0000; tos_chunks <= 7'd12; end
-				else                 begin tos_base <= 23'h700000; tos_chunks <= 7'd16; end
-				state <= S_TOS_HI;
-			end
-			default: ;
-		endcase
+		rbuf_raddr <= 14'd9;
+		if (hdr_cnt == 5'd3) begin
+			if (rbuf_q == 8'hFC) begin tos_base <= 23'h7E0000; tos_chunks <= 7'd12; end
+			else                 begin tos_base <= 23'h700000; tos_chunks <= 7'd16; end
+			state <= S_TOS_HI;
+		end
 	end
 
 	// rbuf_q is valid two clocks after rbuf_raddr changes
@@ -492,6 +515,12 @@ always @(posedge clk_32) begin
 			// reload TOS; tos_done low holds the ST in reset meanwhile
 			tos_pending <= 1'b0;
 			state <= S_BOOT;
+		end else if (warm_pending) begin
+			warm_pending <= 1'b0;
+			data_download <= 1'b1;
+			word_idx <= 13'd0;
+			pace <= 6'd0;
+			state <= S_WARM;
 		end else if (mount_pending[0] || mount_pending[1]) begin
 			mount_drive <= !mount_pending[0];
 			img_size <= mount_pending[0] ? size_a : size_b;

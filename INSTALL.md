@@ -59,8 +59,8 @@ EmuTOS runs most well-behaved ST software, but some games and demos only work wi
 If you have an original TOS dump (192 KB TOS 1.00–1.04 or 256 KB TOS 1.06/1.62/2.06, as `.img`, `.rom`,
 `.bin` or `.tos`), copy it to `Assets/atarist/common/` as `tos.img`, replacing the EmuTOS one:
 
-Leave *Machine* on **Auto** (the default): the core reads the TOS version and picks the machine it
-needs, and caps memory at 4 MB for original Atari TOS. If you pick a machine yourself, it must match:
+Set *Machine* to one your TOS supports (ST is the default), and keep *Memory* at 4 MB or less for
+original Atari TOS (8 and 14 MB are for EmuTOS only):
 
 | Machine setting | Original TOS that works |
 |-----------------|-------------------------|
