@@ -1,6 +1,8 @@
 // Full-system test: MiSTery's atarist_sdram (FX68K, GSTMCU, shifter, MFP, IKBD...) boots a
 // real TOS image from a behavioural SDRAM. Reports what TOS made of the machine.
 //   +tos=<hex> +mem=<0..5> +model=<0 ST,1 STE,2 Mega STE,3 STE Turbo> +ms=<emulated milliseconds> [+warm=<mem2>]
+// +mono selects the SM124; +vidlog logs every change in the frames st_video hands the scaler,
+// +ppm=<ms> writes the first scaler frame after that time to frame.ppm.
 // +warm reboots once with a different RAM size WITHOUT clearing low RAM (old v0.1.3 path);
 // +cold does the same but clears $0-$FFF first (the v0.1.4 cold restart).
 // +hook installs a reset handler (resvalid/resvector -> a bra.s * loop at $600) before the
@@ -32,8 +34,9 @@ reg porb = 0;
 reg st_reset = 1;
 reg [2:0] mem_sel = 1;
 reg [1:0] model = 0;
+reg       mono = 0;
 reg  [7:0] acsi_en = 8'h00;
-wire [31:0] system_ctrl = {7'd0, model, 5'd0, acsi_en, 1'b0, 1'b0 /*mono*/, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
+wire [31:0] system_ctrl = {7'd0, model, 5'd0, acsi_en, 1'b0, ~mono /* bit 8: colour monitor */, 2'b11 /*wp*/, 2'b00 /*68000*/, mem_sel, st_reset};
 
 // ---- floppy A: served like st_media (ack, 512 bytes, drop ack) from a .st image ----
 reg  [1:0]  fd_mounted = 0; reg [31:0] fd_size = 0;
@@ -92,10 +95,12 @@ always @(posedge clk_32) begin
 end
 
 wire [15:0] dq;
+wire [3:0]  st_r, st_g, st_b;
+wire        st_hs_n, st_vs_n, st_mono, st_blank_n;
 atarist_sdram #(1'b0, 1'b1) atarist (
 	.clk_96(clk_96), .clk_32(clk_32), .clk_128(clk_128), .clk_2(clk_2), .clk_mfp(mfp_en),
 	.porb(porb), .system_ctrl(system_ctrl),
-	.r(), .g(), .b(), .hsync_n(), .vsync_n(), .hblank_n(), .vblank_n(), .monomode(), .blank_n(),
+	.r(st_r), .g(st_g), .b(st_b), .hsync_n(st_hs_n), .vsync_n(st_vs_n), .hblank_n(), .vblank_n(), .monomode(st_mono), .blank_n(st_blank_n),
 	.viking_active(), .viking_r(), .viking_g(), .viking_b(), .viking_hs(), .viking_vs(), .viking_hb(), .viking_vb(),
 	.audio_mix_l(), .audio_mix_r(), .midi_out_strobe(), .midi_out(), .midi_rx(1'b1), .midi_tx(),
 	.parallel_in_strobe(1'b1), .parallel_in(8'hff), .parallel_out_strobe(), .parallel_out(), .parallel_printer_busy(1'b1),
@@ -143,6 +148,7 @@ string hdfile, fdfile;
 initial begin
 	if ($value$plusargs("mem=%d", m)) mem_sel = m[2:0];
 	if ($value$plusargs("model=%d", m)) model = m[1:0];
+	if ($test$plusargs("mono")) mono = 1;
 	if ($value$plusargs("fd=%s", fdfile)) begin
 		$readmemh(fdfile, floppy);
 		fd_size = 737280;
@@ -196,6 +202,54 @@ always @(posedge fd_mounted[0]) $display("  img_mounted[0] rises, size %0d (t=%0
 always begin
 	run_ms(50);
 	$display("  t=%0d ms  cpu addr=$%06x  phystop=$%06x", $time / 1000000000, {atarist.fx68_a, 1'b0}, L(24'h42e));
+end
+
+// ---- the core's scaler feed: st_video on the ST's real video outputs ----
+wire [23:0] v_rgb; wire v_de, v_skip, v_hs, v_vs;
+st_video stv (.clk(clk_32), .borders(1'b1), .r(st_r), .g(st_g), .b(st_b), .hsync_n(st_hs_n), .vsync_n(st_vs_n),
+	.blank_n(st_blank_n), .monomode(st_mono), .video_rgb(v_rgb), .video_de(v_de), .video_skip(v_skip), .video_hs(v_hs), .video_vs(v_vs));
+integer f_lines = 0, f_delines = 0, f_px = 0, f_pxmax = 0, f_pxmin = 99999, f_clk = 0, f_n = 0, l_px = 0;
+reg [2:0] f_slot = 0; reg v_de_d = 0;
+reg [127:0] last_sig = 0;
+integer ppm_ms = -1, ppm_fd = 0, ppm_state = 0;
+integer ppm_y = 0;
+reg [7:0] ppm_buf [0:799][0:499][0:2];
+integer px_x = 0, xx, yy;
+initial void'($value$plusargs("ppm=%d", ppm_ms));
+always @(posedge clk_32) begin
+	f_clk = f_clk + 1;
+	v_de_d <= v_de;
+	if (v_de && !v_skip) begin
+		if (ppm_state == 1 && px_x < 800 && ppm_y < 500) begin
+			ppm_buf[px_x][ppm_y][0] = v_rgb[23:16]; ppm_buf[px_x][ppm_y][1] = v_rgb[15:8]; ppm_buf[px_x][ppm_y][2] = v_rgb[7:0];
+		end
+		l_px = l_px + 1; px_x = px_x + 1;
+	end
+	if (!v_de && v_de_d) begin   // end of an active line: slot word on the bus
+		f_slot = v_rgb[15:13]; f_delines = f_delines + 1;
+		if (l_px > f_pxmax) f_pxmax = l_px; if (l_px < f_pxmin) f_pxmin = l_px;
+		l_px = 0; px_x = 0; ppm_y = ppm_y + 1;
+	end
+	if (v_hs) f_lines = f_lines + 1;
+	if (v_vs) begin
+		f_n = f_n + 1;
+		if ($test$plusargs("vidlog") && {f_lines[15:0], f_delines[15:0], f_pxmin[15:0], f_pxmax[15:0], 5'd0, f_slot, f_clk[23:4]} != last_sig[107:0]) begin
+			$display("  frame %0d t=%0d ms: %0d lines, %0d DE lines x %0d..%0d px, slot %0d, %0d clocks (%0d Hz)",
+				f_n, $time / 1000000000, f_lines, f_delines, f_pxmin, f_pxmax, f_slot, f_clk, 32084988 / (f_clk > 0 ? f_clk : 1));
+			last_sig[107:0] = {f_lines[15:0], f_delines[15:0], f_pxmin[15:0], f_pxmax[15:0], 5'd0, f_slot, f_clk[23:4]};
+		end
+		if (ppm_state == 1) begin
+			ppm_fd = $fopen("frame.ppm", "w");
+			$fwrite(ppm_fd, "P3\n%0d %0d\n255\n", f_pxmax, f_delines);
+			for (yy = 0; yy < f_delines && yy < 500; yy = yy + 1)
+				for (xx = 0; xx < f_pxmax && xx < 800; xx = xx + 1)
+					$fwrite(ppm_fd, "%0d %0d %0d\n", ppm_buf[xx][yy][0], ppm_buf[xx][yy][1], ppm_buf[xx][yy][2]);
+			$fclose(ppm_fd); ppm_state = 2;
+			$display("  frame.ppm written (frame %0d, %0dx%0d)", f_n, f_pxmax, f_delines);
+		end
+		if (ppm_state == 0 && ppm_ms >= 0 && $time / 1000000000 >= ppm_ms) ppm_state = 1;
+		f_lines = 0; f_delines = 0; f_pxmax = 0; f_pxmin = 99999; f_clk = 0; ppm_y = 0;
+	end
 end
 
 endmodule

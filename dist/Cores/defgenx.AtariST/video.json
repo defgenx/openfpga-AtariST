@@ -35,10 +35,10 @@
         "mirror": 0
       },
       {
-        "width": 672,
+        "width": 640,
         "height": 400,
-        "aspect_w": 42,
-        "aspect_h": 25,
+        "aspect_w": 8,
+        "aspect_h": 5,
         "rotation": 0,
         "mirror": 0
       }

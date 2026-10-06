@@ -628,7 +628,7 @@ wire [31:0] system_ctrl = {
 	1'b0,               // 18
 	acsi_enable,        // 17:10 ACSI devices (one bit per mounted hard disk)
 	1'b0,               // 9
-	mono_32,            // 8 mono monitor
+	~mono_32,           // 8 colour monitor (MiST's TOS_CONTROL_VIDEO_COLOR): drives MFP GPIP7, low = SM124
 	wp_32,              // 7:6 floppy write protect
 	2'b00,              // 5:4 CPU: 68000 (FX68K) only
 	mem_32,             // 3:1 RAM size

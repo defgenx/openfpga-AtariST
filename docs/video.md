@@ -32,17 +32,16 @@ first pixel can be shifted out). Windows are therefore placed on the measured pi
 | 1    | PAL, no borders     | 528–1807, 66–265           | 640×200 |
 | 2    | NTSC, borders       | 448–1855, 17–256           | 704×240 |
 | 3    | NTSC, no borders    | 512–1791, 37–236           | 640×200 |
-| 4    | Mono                | 177–848, 37–436            | 672×400 |
+| 4    | Mono                | 246–885, 37–436            | 640×400 |
 
 The slot is announced at the end of each line's active area (`video_rgb = {8'h00, slot, 13'h0}` on the
 first clock with DE low), the convention used by other Pocket cores.
 
 ## Known gaps
 
-* **Mono horizontal position is estimated.** The testbench does not reach mono shifter output, so the
-  mono pixel lag behind DE is a structural estimate (~33 clocks: one word fetched instead of four). The
-  window has 16 pixels of margin on each side to absorb the error. Verify on hardware and adjust `x0/x1`
-  for `MODE_MONO` in `st_video.sv`.
+* **Mono has no margin.** The first mono pixel leaves the shifter 246 clocks after the hsync fall
+  (86 behind the GLUE's DE), measured by booting EmuTOS on an SM124 in `sim/system` (`+mono +ppm=`);
+  the last one is at 885 of an 896-clock line, so the window is exactly the 640 pixels.
 * **Medium res was only measured indirectly.** The testbench measured the same 96-clock lag for low and
   medium res; the structural estimate for medium res is smaller (~54 clocks). With borders shown (the
   default) the 32-pixel margins absorb either; with borders hidden, medium res may be shifted by up to

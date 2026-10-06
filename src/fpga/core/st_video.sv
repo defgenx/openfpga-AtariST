@@ -55,8 +55,8 @@ reg  [2:0] slot;
 always @(*) begin
 	case (mode)
 		MODE_MONO: begin
-			// 640 pixels plus 16 of margin either side; pixel lag behind DE not measured yet
-			x0 = 12'd177;  x1 = 12'd849;  y0 = 10'd37; y1 = 10'd437; slot = SLOT_MONO;
+			// the 640 pixels exactly: the 896-clock line leaves no room for a margin after them
+			x0 = 12'd246;  x1 = 12'd886;  y0 = 10'd37; y1 = 10'd437; slot = SLOT_MONO;
 		end
 		MODE_NTSC: begin
 			if (borders) begin x0 = 12'd448; x1 = 12'd1856; y0 = 10'd17; y1 = 10'd257; slot = SLOT_NTSC_BORDER; end

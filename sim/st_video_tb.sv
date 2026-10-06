@@ -80,7 +80,7 @@ initial begin
 	run_mode("PAL full",    2048, 160, 313, 3, 640, 200, 1, 0);
 	run_mode("NTSC border", 2032, 160, 263, 3, 704, 240, 2, 1);
 	run_mode("NTSC full",   2032, 160, 263, 3, 640, 200, 3, 0);
-	run_mode("Mono",         896,  96, 501, 1, 672, 400, 4, 1);
+	run_mode("Mono",         896,  96, 501, 1, 640, 400, 4, 1);
 	if (errors == 0) $display("PASS"); else $display("FAIL: %0d errors", errors);
 	$finish;
 end
