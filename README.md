@@ -187,5 +187,5 @@ make -C sim           # needs Icarus Verilog and Verilator
 * On-screen keyboard font: [font8x8](https://github.com/dhepper/font8x8) by Daniel Hepper — public domain.
 * Handheld control scheme modelled on [Mazamars312's Pocket Amiga core](https://github.com/Mazamars312/Analogue-Amiga).
 
-The Pocket-specific code in this repository is distributed under the GPL, like the MiSTery core it
-builds on.
+The Pocket-specific code in this repository is distributed under the GPL version 3 or later
+([LICENSE](LICENSE)), like the MiSTery core it builds on.
