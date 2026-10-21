@@ -139,6 +139,9 @@ git clone --recursive <this repo>
 On Apple Silicon the Docker build runs under x86 emulation and is slow; the image needs ~15 GB of free
 space in Docker's VM.
 
+The platform image `dist/Platforms/_images/atarist.bin` is drawn by `python3 tools/gen_platform_image.py`
+(pass a `.png` path to also write a preview); edit the drawing there, not the `.bin`.
+
 ## Tests
 
 ```sh
